@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tailored for JJ's BRAVIA 4K VH2. Edit, then rebuild with launcher/build-and-install path. -->
+<resources>
+    <!-- Dock row (bottom), in order. Missing apps are skipped. 5 across = Command Deck dock. -->
+    <string-array name="dock_apps">
+        <item>com.google.android.youtube.tv</item>
+        <item>com.amazon.amazonvideo.livingroom</item>
+        <item>com.disney.disneyplus</item>
+        <item>com.cbs.ott</item>
+        <item>com.hulu.livingroomplus</item>
+        <item>com.apple.atve.sony.appletv</item>
+        <item>com.netflix.ninja</item>
+    </string-array>
+    <!-- Apps never shown as tiles. -->
+    <string-array name="hidden_apps">
+        <item>com.sony.dtv.notificationcenter</item>
+        <item>com.sony.dtv.ecodashboard</item>
+    </string-array>
+    <bool name="show_home_settings_shortcut">false</bool>
+    <!-- Your location for the weather card (Open-Meteo). Set these to your own latitude/longitude. -->
+    <string name="home_lat" translatable="false">0.0</string>
+    <string name="home_lon" translatable="false">0.0</string>
+    <!-- The home hub: the always-on machine running Mission Control (:8777), the Nest bridge (:8778) and
+         the Blink bridge (:8779). Changeable on the TV in Settings > System > Home hub. -->
+    <!-- Replace with your hub's LAN address. -->
+    <string name="hub_host" translatable="false">192.168.1.x</string>
+</resources>

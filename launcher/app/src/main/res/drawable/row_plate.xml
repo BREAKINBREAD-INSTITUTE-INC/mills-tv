@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Settings / list row plate: white 13% (dark) or ink 8% (light) when focused, nothing otherwise. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/plate" />
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+    <item><color android:color="@android:color/transparent" /></item>
+</selector>

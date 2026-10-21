@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MILLS TV home (blueprint A1-A3, B1-B2). Sizes are dp = blueprint px / 2. Colours are set in
+     MainActivity from the theme tokens, so dark and light share this one layout. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clipChildren="false">
+
+    <com.gathin.tvhome.AuroraView
+        android:id="@+id/aurora"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
+    <!-- a video background (Settings > Background > Video); the aurora shows Nebula if it fails -->
+    <com.gathin.tvhome.VideoBackdrop
+        android:id="@+id/video"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
+    <!-- the home layer: everything that lifts and fades when the command center rises -->
+    <FrameLayout
+        android:id="@+id/homeLayer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipChildren="false">
+
+        <!-- clock + date + quiet status, top-left at the safe margins (64dp, 46dp) -->
+        <LinearLayout
+            android:id="@+id/clockGroup"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginStart="64dp"
+            android:layout_marginTop="46dp">
+            <TextClock
+                android:id="@+id/clock"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:format12Hour="h:mm"
+                android:format24Hour="H:mm"
+                android:textSize="40sp"
+                android:letterSpacing="-0.01"
+                android:fontFamily="@font/outfit"
+                android:includeFontPadding="false" />
+            <TextClock
+                android:id="@+id/date"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:format12Hour="EEEE, MMMM d"
+                android:format24Hour="EEEE, MMMM d"
+                android:layout_marginTop="6dp"
+                android:textSize="15sp"
+                android:fontFamily="@font/outfit"
+                android:includeFontPadding="false" />
+            <LinearLayout
+                android:id="@+id/statusRow"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="13dp">
+                <View
+                    android:id="@+id/statusDot"
+                    android:layout_width="5dp"
+                    android:layout_height="5dp"
+                    android:background="@drawable/status_dot" />
+                <TextView
+                    android:id="@+id/homeStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="Checking…"
+                    android:textSize="13sp"
+                    android:fontFamily="@font/outfit"
+                    android:includeFontPadding="false" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- top-right: wallpaper, all apps, settings; filled in code as focus plates -->
+        <LinearLayout
+            android:id="@+id/topIcons"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_gravity="end|top"
+            android:layout_marginEnd="58dp"
+            android:layout_marginTop="42dp"
+            android:clipChildren="false" />
+
+        <!-- the frosted dock, its bottom edge 70dp above the panel bottom; the name sits in that band -->
+        <LinearLayout
+            android:id="@+id/dockGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:layout_gravity="bottom"
+            android:layout_marginBottom="34dp"
+            android:clipChildren="false">
+            <com.gathin.tvhome.FrostLayout
+                android:id="@+id/dockGlass"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:clipChildren="false">
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/dock"
+                    android:layout_width="wrap_content"
+                    android:layout_height="88dp"
+                    android:clipToPadding="false"
+                    android:clipChildren="false" />
+            </com.gathin.tvhome.FrostLayout>
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="20dp"
+                android:layout_marginTop="16dp">
+                <TextView
+                    android:id="@+id/dockName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:textSize="14sp"
+                    android:fontFamily="@font/outfit"
+                    android:includeFontPadding="false" />
+            </FrameLayout>
+        </LinearLayout>
+
+        <!-- List arrangement (Settings > Layout): one glass column, names shown -->
+        <com.gathin.tvhome.FrostLayout
+            android:id="@+id/listGlass"
+            android:layout_width="310dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="64dp"
+            android:layout_marginTop="165dp"
+            android:orientation="vertical"
+            android:padding="10dp"
+            android:visibility="gone">
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/list"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+        </com.gathin.tvhome.FrostLayout>
+    </FrameLayout>
+
+    <!-- 20px tracked wordmark, bottom-left, on every screen -->
+    <FrameLayout
+        android:id="@+id/mark"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="64dp"
+        android:layout_marginBottom="33dp" />
+
+    <!-- optional compact status strip (Settings > Layout > Status strip), off by default -->
+    <FrameLayout
+        android:id="@+id/strip"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="64dp"
+        android:layout_marginEnd="64dp"
+        android:layout_marginTop="166dp"
+        android:visibility="gone" />
+
+    <!-- the bridge: a dim over the wallpaper, then the command center rises from below -->
+    <View
+        android:id="@+id/dimmer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:alpha="0"
+        android:visibility="gone" />
+
+    <FrameLayout
+        android:id="@+id/commandCenter"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:clipChildren="false" />
+</FrameLayout>

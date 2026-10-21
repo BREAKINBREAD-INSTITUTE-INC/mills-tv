@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Nebula base: deep space, a faint blue pool and dark edges. AuroraView adds the gas and stars. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle"><solid android:color="#04050C"/></shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <gradient android:type="radial" android:gradientRadius="640dp"
+                android:centerX="0.45" android:centerY="0.45"
+                android:startColor="#FF0E1030" android:centerColor="#660A0C22" android:endColor="#0004050C"/>
+        </shape>
+    </item>
+</layer-list>

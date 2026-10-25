@@ -8,16 +8,50 @@ a small "command center" for a home that also runs a local AI system:
 
 - **Home** with a clock, weather (Open-Meteo), status chips and the apps you choose for the dock
 - **Theater**, a home page built around Continue Watching from the TV's own media sessions
-- **Mission Control**, a read-only view of an agent roster served by a hub on the home network
-- **House**, a Nest thermostat read over Matter by a bridge on the hub (read-only)
-- **Cameras**, Blink cameras and doorbell events through a bridge on the hub (read-only)
+- **Mission Control**, the agent roster and the machines they run on, served by a hub on the home
+  network, with a detail screen for each agent and machine
+- **House**, a Nest thermostat over Matter through a bridge on the hub, and the monthly housing
+  budget as bars
+- **Cameras**, Blink cameras and doorbell events through a bridge on the hub: a grid, clip history
+  and a full-screen clip player
 - **Network** and **System** health pages
-- Settings for look and feel: frosted or solid panels, moving colour backgrounds, optional video
-  backgrounds, a screensaver, and sleep sounds on a timer
+- Settings for look and feel: the Glass or Classic look, light / dark / auto, moving colour
+  backgrounds, optional video backgrounds, a screensaver, and sleep sounds on a timer
 
-The rules it follows: **the TV reads, the phone approves.** Nothing on the TV changes a real
-device setting, every reading is labelled and time-stamped, and stale data turns grey instead of
-staying green.
+The rules it follows: **the TV reads, the phone approves.** Every reading is labelled and
+time-stamped, and stale data turns grey instead of staying green. The TV changes a real device in
+one place only, the thermostat (below), and only within limits the hub enforces.
+
+### New in this version
+
+**The Glass look.** Settings > Background > Look switches between **Glass** (the default) and
+**Classic**. Glass has frosted cards, tiles, buttons and settings rows (each row its own pill),
+and the item you're on turns solid white and lifts a little, in place of Classic's gold ring.
+With Mode set to **Auto** it is **Daylight Glass** from sunrise and **Night Glass** after sunset.
+Daylight needs a background with a day version: Dusk, Aurora Color, Color Waves or Sunset Drift.
+
+**The Quick menu.** The sliders icon at Home's top right, or **MENU** on the remote, opens a
+control center: the clock on the left, and two-line pill buttons (name, and what it's set to
+now) for Edit layout, Look, Mode, Thermostat, Cameras and Sleep, then round buttons for Home,
+Background, Apps on Home and Settings. Look and Mode switch in place; the rest open their screens.
+
+**Edit layout in Mission Control.** **Edit layout** (top right of the AI Team screen, MENU there,
+or the Quick menu) turns edit mode on. OK on a card offers **Move**, **Rename**, **Edit note** and
+**Reset**. A card you move lifts; the arrows carry it through its own group (agents in the grid,
+machines in their row), OK drops it and BACK puts it back. **Done** saves the order, names and
+notes on the hub (`/api/layout`), so they hold after a reload and on every screen; BACK with
+unsaved changes asks Save / Discard / Keep editing. It changes only what the cards show, never an
+agent or a machine.
+
+**Thermostat controls.** On House, ▲ ▼ on a target moves it a degree (presses gather for 1.5 s and
+only the final value is sent) and the mode chips need OK twice. The hub's Nest bridge clamps every
+change to 68-82 °F, keeps heat below cool, rate-limits it, reads it back from the thermostat before
+the TV says "set", and logs it. Google Home keeps working as before.
+
+**The housing budget.** House shows each monthly bill as a budget bar with the total, from a
+bills file on the hub (see `mills-home-bridges`, `/api/budget`): rent as fixed, the other bills
+as their latest real amount, a bill that comes every two months halved and saying so, and one-time
+setup charges left out. Without the file the card says so; no figures are built in.
 
 > The bridges and the hub dashboard live in a separate repo, `mills-home-bridges`. Without them the
 > launcher still works as a plain home screen; the live cards show "not connected".
@@ -37,8 +71,8 @@ clips to `/sdcard/Android/data/com.gathin.tvhome/files/backgrounds/` and `.m4a` 
 `/sdcard/Android/data/com.gathin.tvhome/files/sleep/` with `adb push`. No video or sound files are
 in this repository or its history.
 
-The "House" budget card shows **sample figures** with a SAMPLE tag. It is a design placeholder,
-not real data.
+Your bills never go in this repo: the budget card reads them from the hub at run time, and the
+hub only answers the addresses you allow.
 
 ## Credit
 

@@ -124,10 +124,13 @@
         <activity android:name=".NetworkActivity" android:exported="false" android:theme="@style/Theme.TvHome" />
         <activity android:name=".MissionControlActivity" android:exported="false" android:theme="@style/Theme.TvHome" />
         <activity android:name=".AgentActivity" android:exported="false" android:theme="@style/Theme.TvHome" />
+        <activity android:name=".MachineActivity" android:exported="false" android:theme="@style/Theme.TvHome" />
         <activity android:name=".DreamPreviewActivity" android:exported="false" android:theme="@style/Theme.TvHome" />
         <activity android:name=".CamerasActivity" android:exported="false" android:theme="@style/Theme.TvHome" />
         <activity android:name=".CameraActivity" android:exported="false" android:theme="@style/Theme.TvHome" />
+        <activity android:name=".ClipPlayerActivity" android:exported="false" android:theme="@style/Theme.TvHome" />
         <activity android:name=".HouseActivity" android:exported="false" android:theme="@style/Theme.TvHome" />
+        <activity android:name=".QuickMenuActivity" android:exported="false" android:theme="@style/Theme.TvHome" />
         <!-- Theater home page (Settings > Layout > Home page); MainActivity hands over to it. -->
         <activity
             android:name=".TheaterActivity"

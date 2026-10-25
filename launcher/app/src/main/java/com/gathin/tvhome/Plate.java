@@ -14,6 +14,12 @@ import android.widget.LinearLayout;
  * thumbnails, editor slots. One shape grammar (blueprint D4/D5): the surface, a gold edge when
  * focused, and the same 24x2dp gold underline everywhere. Focus animates scale and alpha only,
  * never layout. Children are content; the plate itself takes focus.
+ *
+ * The Glass look (Prefs.look, JJ Oct 25, after the Lumen layouts he liked): cards, tiles, buttons
+ * and rows are frosted pills and rounded cards, and the focused one turns solid white and lifts a
+ * little, with no ring or underline. On Night Glass the text inside a focused plate takes the
+ * light theme's colours for as long as it has focus, so it reads on the white. Gold stays for a
+ * lifted card and the one primary button.
  */
 public class Plate extends LinearLayout {
 
@@ -34,6 +40,8 @@ public class Plate extends LinearLayout {
     private boolean underlineCenter, underlineOutside;
     private float underlineX, underlineBottom;
     private boolean lifted;           // editor: picked-up slot
+    private boolean whiteFocus;       // Glass look: the focus is a solid white fill, no underline
+    private final java.util.Map<android.widget.TextView, int[]> inked = new java.util.HashMap<>();   // {own colour, colour on white}
     private boolean inactive;
     private OnFocus onFocus;
 
@@ -92,6 +100,17 @@ public class Plate extends LinearLayout {
             default:       // settings row: plate fill on focus only
                 radius = 8; pad = 0; restFill = 0; focusFill = t.plate; restStroke = 0; focusStroke = 0; focusRing = 0;
                 focusScale = 1f; underlineX = 12; underlineBottom = 3.5f; break;
+        }
+        whiteFocus = false;
+        if (t.glassLook) switch (kind) {
+            case CARD: case TILE: case BUTTON: case ROW:
+                whiteFocus = true;
+                focusFill = t.focusWhite; focusStroke = 0; focusRing = 0;
+                if (kind == Kind.CARD || kind == Kind.TILE) { radius = 22; focusScale = 1.04f; restFill = kind == Kind.CARD ? t.panel : t.glass; restStroke = t.glassEdge; }
+                else if (kind == Kind.ROW) { radius = 999; restFill = t.glass; restStroke = t.glassEdge; }
+                else { restFill = t.glass; restStroke = t.glassEdge; }
+                break;
+            default: break;
         }
         bar.setColor(Prefs.accentColor(getContext()));
         invalidate();
@@ -170,9 +189,40 @@ public class Plate extends LinearLayout {
         super.onDraw(c);
     }
 
+    /** Night Glass: while focused (solid white), every text inside takes its colour for white. */
+    private void inkText(boolean on) {
+        if (!on) {
+            if (inked.isEmpty()) return;
+            for (java.util.Map.Entry<android.widget.TextView, int[]> e : inked.entrySet())
+                if (e.getKey().getCurrentTextColor() == e.getValue()[1]) e.getKey().setTextColor(e.getValue()[0]);
+            inked.clear();
+            return;
+        }
+        java.util.ArrayDeque<View> q = new java.util.ArrayDeque<>();
+        q.add(this);
+        while (!q.isEmpty()) {
+            View v = q.poll();
+            if (v instanceof android.widget.TextView) {
+                android.widget.TextView tv = (android.widget.TextView) v;
+                int cur = tv.getCurrentTextColor();
+                int[] k = inked.get(tv);
+                if (k == null || cur != k[1]) {        // new, or a refresh set its colour again
+                    int w = t.onWhite(cur);
+                    inked.put(tv, new int[]{cur, w});
+                    if (w != cur) tv.setTextColor(w);
+                }
+            } else if (v instanceof android.view.ViewGroup) {
+                android.view.ViewGroup g = (android.view.ViewGroup) v;
+                for (int i = 0; i < g.getChildCount(); i++) q.add(g.getChildAt(i));
+            }
+        }
+    }
+
     @Override
     protected void dispatchDraw(Canvas c) {
+        if (whiteFocus && t.inkOnFocus) inkText(isFocused() || lifted);
         super.dispatchDraw(c);
+        if (whiteFocus && !lifted) return;           // Glass: the white fill is the focus
         if (isFocused() && !inactive && kind != Kind.SLOT || lifted) {
             float w = 24 * d, h = 2 * d;
             float left = underlineCenter ? (getWidth() - w) / 2f : underlineX * d;

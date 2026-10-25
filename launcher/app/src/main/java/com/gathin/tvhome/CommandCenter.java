@@ -127,7 +127,7 @@ final class CommandCenter {
                     w.has() ? w.tempF + "°" : "—",
                     w.has() ? "outdoor · " + w.sky() : "outdoor reading unavailable",
                     Ui.Status.IDLE, h.chip(),
-                    new String[][]{{"Indoor", "not connected", ""}, {"Housing budget", "sample", ""}});
+                    new String[][]{{"Indoor", "not connected", ""}, {"Housing budget", "on House", ""}});
         }
 
         Live.Cams cm = Live.cams();

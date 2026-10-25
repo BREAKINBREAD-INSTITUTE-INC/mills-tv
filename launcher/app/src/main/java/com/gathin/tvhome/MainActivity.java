@@ -35,7 +35,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener, C
     private FrameLayout ccLayer;
     private boolean ccOpen;
     private AnimatorSet bridge;
-    private ObjectAnimator pulse;
+    private boolean pulsing, resumed;
+    private long pulseStart;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final DoorbellBanner doorbell = new DoorbellBanner(this);
     private static int lastFocused = 0;
@@ -85,7 +86,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener, C
         super.onResume();
         if (home == null) return;
         if (toTheater()) return;
-        if (home.t != null && ThemeManager.isLight(this) != home.drawnLight) { recreate(); return; }
+        resumed = true;
+        if (home.t != null && (ThemeManager.isLight(this) != home.drawnLight
+                || (Prefs.look(this) == Prefs.LOOK_GLASS) != home.t.glassLook)) { recreate(); return; }
         rotateWallpaperIfDue();
         home.bind();
         AuroraView aurora = findViewById(R.id.aurora);
@@ -93,11 +96,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener, C
         VideoBackdrop video = findViewById(R.id.video);
         if (video != null) video.setPaused(false);
         wireTopIcons();
-        HomeStatus.refresh(this, home.status, home.statusDot, home.t, () -> {
-            if (ccOpen) cc.refresh();
-            StatusStrip.bind(this, home.t, home.strip);
-            pulseIfLive();
-        });
+        refreshStatus();
+        main.removeCallbacks(statusTick);
+        main.postDelayed(statusTick, STATUS_EVERY_MS);
         if (ccOpen) { cc.build(home.t); focusCard(lastCard); }
         else home.root.post(() -> focusTile(lastFocused));
         home.dock.post(this::fadeEdges);
@@ -139,22 +140,58 @@ public class MainActivity extends Activity implements AppAdapter.TileListener, C
         if (video != null) video.setPaused(true);
         doorbell.stop();
         main.removeCallbacks(rotateTick);
-        if (pulse != null) { pulse.cancel(); home.statusDot.setAlpha(1f); }
+        main.removeCallbacks(statusTick);
+        resumed = false;
+        stopPulse();
     }
 
-    /** The one ambient movement on Home: the status dot breathes, only while the feed proves the team is live. */
+    /** Home sitting on screen keeps its status line true: re-read it every minute while showing. */
+    private static final long STATUS_EVERY_MS = 60_000L;
+
+    private final Runnable statusTick = new Runnable() {
+        @Override public void run() { refreshStatus(); main.postDelayed(this, STATUS_EVERY_MS); }
+    };
+
+    private void refreshStatus() {
+        HomeStatus.refresh(this, home.status, home.statusDot, home.t, () -> {
+            if (isFinishing()) return;
+            if (ccOpen) cc.refresh();
+            StatusStrip.bind(this, home.t, home.strip);
+            pulseIfLive();
+        });
+    }
+
+    /**
+     * The one ambient movement on Home: the status dot breathes, only while the feed proves the team
+     * is live. Stepped at 12 frames a second instead of an animator's 60: the dot is 10 px, and every
+     * frame redraws the whole window, so a 60 fps breath cost ~23% of a CPU core on the TV, forever.
+     */
+    private static final long PULSE_PERIOD_MS = 2400, PULSE_STEP_MS = 83;
+
     private void pulseIfLive() {
         Live.Mission m = Live.mission();
         boolean live = m.ok && !m.stale() && m.count(Ui.Status.OK) > 0;
-        if (pulse != null) pulse.cancel();
-        home.statusDot.setAlpha(1f);
-        if (!live || !Motion.ambient(this)) return;
-        pulse = ObjectAnimator.ofFloat(home.statusDot, View.ALPHA, 1f, 0.4f);
-        pulse.setDuration(1200);
-        pulse.setRepeatMode(ObjectAnimator.REVERSE);
-        pulse.setRepeatCount(ObjectAnimator.INFINITE);
-        pulse.start();
+        if (!live || !resumed || !Motion.ambient(this)) { stopPulse(); return; }   // a reply landing after onPause starts nothing
+        if (pulsing) return;
+        pulsing = true;
+        pulseStart = android.os.SystemClock.uptimeMillis();
+        main.post(breathe);
     }
+
+    private void stopPulse() {
+        pulsing = false;
+        main.removeCallbacks(breathe);
+        if (home != null) home.statusDot.setAlpha(1f);
+    }
+
+    private final Runnable breathe = new Runnable() {
+        @Override public void run() {
+            if (!pulsing) return;
+            float ph = ((android.os.SystemClock.uptimeMillis() - pulseStart) % PULSE_PERIOD_MS) / (float) PULSE_PERIOD_MS;
+            home.statusDot.setAlpha(0.7f + 0.3f * (float) Math.cos(ph * 2 * Math.PI));   // 1 → 0.4 → 1
+            main.postDelayed(this, PULSE_STEP_MS);
+        }
+    };
 
     @Override
     public void onBackPressed() {
@@ -202,8 +239,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener, C
     // ---- top-right icons ------------------------------------------------------------------------
 
     private void wireTopIcons() {
-        View wall = findViewById(R.id.btnWall), apps = findViewById(R.id.btnApps), gear = findViewById(R.id.btnSettings);
+        View quick = findViewById(R.id.btnQuick), wall = findViewById(R.id.btnWall), apps = findViewById(R.id.btnApps), gear = findViewById(R.id.btnSettings);
         if (wall == null) return;
+        if (quick != null) quick.setOnClickListener(v -> open(new Intent(this, QuickMenuActivity.class)));
         wall.setOnClickListener(v -> openSettings("background"));
         apps.setOnClickListener(v -> openSettings("apps"));
         gear.setOnClickListener(v -> openSettings("overview"));
@@ -212,9 +250,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener, C
             if (key == KeyEvent.KEYCODE_DPAD_DOWN) { focusTile(lastFocused); return true; }
             if (key == KeyEvent.KEYCODE_DPAD_UP) return true;
             if (key == KeyEvent.KEYCODE_DPAD_RIGHT && v == gear) return true;
-            if (key == KeyEvent.KEYCODE_DPAD_LEFT && v == wall) return true;
+            if (key == KeyEvent.KEYCODE_DPAD_LEFT && v == (quick != null ? quick : wall)) return true;
             return false;
         };
+        if (quick != null) quick.setOnKeyListener(down);
         wall.setOnKeyListener(down); apps.setOnKeyListener(down); gear.setOnKeyListener(down);
     }
 
@@ -233,16 +272,38 @@ public class MainActivity extends Activity implements AppAdapter.TileListener, C
         final View item = (View) card.getParent();
         android.graphics.Rect r = new android.graphics.Rect(0, 0, item.getWidth(), item.getHeight());
         home.dock.requestChildRectangleOnScreen(item, r, false);
-        home.dockName.post(() -> alignName(item, true));
+        home.dockName.post(() -> alignName(item, true, 0));
     }
 
     /** Slide the focused-app name so it sits under the focused glyph (160 ms). */
-    private void alignName(View item, boolean animate) {
+    private void alignName(View item, boolean animate, int tries) {
         View parent = (View) home.dockName.getParent();
         if (parent == null || item.getWidth() == 0) return;
+        // the dock is scaled to 0.98 while the command center slides away; measuring then put the
+        // name ~2% off (onto the wordmark). The animation's end aligns it again.
+        if (bridge != null && bridge.isRunning()) return;
+        // on resume the dock and wordmark are re-laid out: measure after that pass, not before it
+        // (before, the name could land too close to the wordmark until focus moved)
+        if (tries < 3 && (home.root.isLayoutRequested() || home.dock.isLayoutRequested() || home.mark.isLayoutRequested())) {
+            final android.view.ViewTreeObserver vto = home.root.getViewTreeObserver();
+            vto.addOnGlobalLayoutListener(new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
+                @Override public void onGlobalLayout() {
+                    home.root.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                    alignName(item, animate, tries + 1);
+                }
+            });
+            return;
+        }
         int[] it = new int[2]; item.getLocationOnScreen(it);
         int[] pp = new int[2]; parent.getLocationOnScreen(pp);
         float tileCenter = it[0] + item.getWidth() / 2f;
+        // keep the name clear of the MILLS wordmark bottom-left: the first app's name sat on it
+        View mark = home.mark;
+        if (mark.getVisibility() == View.VISIBLE && mark.getWidth() > 0) {
+            int[] mp = new int[2]; mark.getLocationOnScreen(mp);
+            float half = home.dockName.getPaint().measureText(String.valueOf(home.dockName.getText())) / 2f;
+            tileCenter = Math.max(tileCenter, mp[0] + mark.getWidth() + Ui.dp(this, 18) + half);
+        }
         float parentCenter = pp[0] + parent.getWidth() / 2f;
         float tx = tileCenter - parentCenter;
         long ms = animate ? Motion.ms(this, 160) : 0;
@@ -368,7 +429,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener, C
         bridge.setInterpolator(Motion.FAST_OUT_SLOW_IN);
         bridge.addListener(new AnimatorListenerAdapter() {
             @Override public void onAnimationEnd(Animator a) {
-                if (!in && !ccOpen) { ccLayer.setVisibility(View.GONE); dimmer.setVisibility(View.GONE); }
+                if (!in && !ccOpen) {
+                    ccLayer.setVisibility(View.GONE);
+                    dimmer.setVisibility(View.GONE);
+                    View f = getCurrentFocus();
+                    if (f != null && !home.listMode() && f.getParent() instanceof View) main.post(() -> alignName((View) f.getParent(), true, 0));
+                }
             }
         });
         bridge.start();
@@ -381,6 +447,16 @@ public class MainActivity extends Activity implements AppAdapter.TileListener, C
             cc.cards[k].onFocus((p, has) -> { if (has) lastCard = n; });
         }
         cc.cards[idx].requestFocus();
+    }
+
+    /** MENU on Home opens the Quick menu (the sliders icon, top right, does the same). */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent e) {
+        if (e.getKeyCode() == KeyEvent.KEYCODE_MENU) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) open(new Intent(this, QuickMenuActivity.class));
+            return true;
+        }
+        return super.dispatchKeyEvent(e);
     }
 
     // ---- helpers ---------------------------------------------------------------------------------

@@ -124,6 +124,14 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
 
     int ink() { return tokens.text; }
 
+    /** What the last reload was built from; the same again means nothing to redo. */
+    private String loadedFrom;
+
+    /**
+     * Re-read the apps. Home calls this on every resume, so when nothing changed (same apps, same
+     * versions, same favourites and hidden list) it returns at once: loading every banner and icon
+     * and re-rendering the glyphs cost ~0.3 s on the main thread each time Home came back.
+     */
     void reload() {
         FOCUS_SCALE = Prefs.focusScale(ctx);
         favourites = Prefs.favourites(ctx);
@@ -131,11 +139,21 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
         PackageManager pm = ctx.getPackageManager();
         Intent probe = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER);
         List<ResolveInfo> found = pm.queryIntentActivities(probe, 0);
+        StringBuilder from = new StringBuilder().append(favourites).append('|').append(new java.util.TreeSet<>(hidden)).append('|');
+        for (ResolveInfo ri : found) {
+            if (ri.activityInfo == null) continue;
+            // an update installs to a new path, so the path stands for the version
+            from.append(ri.activityInfo.packageName).append('/').append(ri.activityInfo.name).append('@')
+                .append(ri.activityInfo.applicationInfo.sourceDir).append(ri.activityInfo.applicationInfo.enabled).append(';');
+        }
+        if (from.toString().equals(loadedFrom) && !items.isEmpty()) { notifyDataSetChanged(); return; }   // rebind only: display prefs may have changed
+        loadedFrom = from.toString();
         List<Entry> fresh = new ArrayList<>();
         for (ResolveInfo ri : found) {
             if (ri.activityInfo == null) continue;
             String pkg = ri.activityInfo.packageName;
             if (pkg.equals(ctx.getPackageName()) || hidden.contains(pkg)) continue;
+            if (dockOnly && favourites.indexOf(pkg) < 0) continue;   // the dock shows favourites only: don't load the rest
             Drawable banner = ri.activityInfo.loadBanner(pm);
             if (banner == null) banner = ri.activityInfo.applicationInfo.loadBanner(pm);
             Drawable icon = ri.loadIcon(pm);
@@ -250,7 +268,7 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
                 h.label.setText(e.label);
                 h.label.setTextColor(tokens.text);
                 h.label.setTypeface(Ui.outfit(ctx));
-                h.label.setFontVariationSettings(rows ? "'wght' 300" : "'wght' 400");
+                Ui.weigh(h.label, rows ? 300 : 400);
                 h.label.setTextSize(rows ? 15 : show == Prefs.SHOW_NAMES ? 13 : 9);
                 h.label.setVisibility(View.VISIBLE);
             } else {

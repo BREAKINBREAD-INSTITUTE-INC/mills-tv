@@ -120,16 +120,16 @@ final class HomeBinder {
         // clock / date / status (blueprint B1)
         boolean large = Prefs.largeType(ctx);
         clock.setTextColor(t.text);
-        clock.setFontVariationSettings("'wght' 300");
+        Ui.weigh(clock, 300);
         clock.setTextSize(large ? 46 : 40);
         if (Prefs.clock24h(ctx)) { clock.setFormat12Hour("H:mm"); clock.setFormat24Hour("H:mm"); }
         else { clock.setFormat12Hour("h:mm"); clock.setFormat24Hour("h:mm"); }
         date.setTextColor(t.light ? 0xB80B0F14 : 0xCCF2F4F7);
-        date.setFontVariationSettings("'wght' 300");
+        Ui.weigh(date, 300);
         date.setTextSize(large ? 17 : 15);
         date.setVisibility(Prefs.showDate(ctx) ? View.VISIBLE : View.GONE);
         status.setTextColor(t.light ? 0x990B0F14 : 0x9EF2F4F7);
-        status.setFontVariationSettings("'wght' 300");
+        Ui.weigh(status, 300);
         status.setTextSize(large ? 14.5f : 13);
         statusDot.getBackground().mutate().setTint(t.idle);
         if (!Live.mission().stale() || Live.weather().has()) {
@@ -137,7 +137,7 @@ final class HomeBinder {
             statusDot.getBackground().setTint(t.state(Live.mission().teamState()));
         }
         dockName.setTextColor(t.text);
-        dockName.setFontVariationSettings("'wght' 400");
+        Ui.weigh(dockName, 400);
         dockName.setVisibility(Prefs.nameUnderFocus(ctx) && Prefs.show(ctx) == Prefs.SHOW_ICONS ? View.VISIBLE : View.INVISIBLE);
         mark.removeAllViews();
         mark.addView(Ui.mark(ctx, t), new android.widget.FrameLayout.LayoutParams(-2, -2));
@@ -172,9 +172,9 @@ final class HomeBinder {
     /** Wallpaper picker, All apps, Settings: 18dp monochrome icons, 24dp apart, as focus plates. */
     private void buildTopIcons() {
         topIcons.removeAllViews();
-        int[] icons = {R.drawable.ic_wall, R.drawable.ic_grid, R.drawable.ic_gear};
-        int[] ids = {R.id.btnWall, R.id.btnApps, R.id.btnSettings};
-        String[] names = {"Wallpaper", "All apps", "Settings"};
+        int[] icons = {R.drawable.ic_sliders, R.drawable.ic_wall, R.drawable.ic_grid, R.drawable.ic_gear};
+        int[] ids = {R.id.btnQuick, R.id.btnWall, R.id.btnApps, R.id.btnSettings};
+        String[] names = {"Quick menu", "Wallpaper", "All apps", "Settings"};
         for (int i = 0; i < icons.length; i++) {
             Plate p = Plate.of(ctx, t, Plate.Kind.ROW);
             p.setId(ids[i]);
@@ -183,7 +183,10 @@ final class HomeBinder {
             p.setContentDescription(names[i]);
             ImageView iv = new ImageView(ctx);
             iv.setImageResource(icons[i]);
-            iv.setColorFilter(t.light ? 0xB80B0F14 : 0xC7F2F4F7);
+            final int normal = t.light ? 0xB80B0F14 : 0xC7F2F4F7;
+            iv.setColorFilter(normal);
+            // Night Glass: a focused icon sits on white, so it goes dark with it
+            if (t.inkOnFocus) p.onFocus((pl, has) -> iv.setColorFilter(has ? 0xFF0B0F14 : normal));
             int s = Ui.dp(ctx, 18);
             p.addView(iv, new LinearLayout.LayoutParams(s, s));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(ctx, 30), Ui.dp(ctx, 30));

@@ -77,7 +77,7 @@ public class TheaterActivity extends Activity implements AppAdapter.TileListener
         super.onResume();
         // Settings changed the home page back to Calm: step down to the calm home underneath.
         if (!Prefs.theater(this)) { finish(); overridePendingTransition(0, 0); return; }
-        if (ThemeManager.isLight(this) != t.light) { recreate(); return; }
+        if (ThemeManager.isLight(this) != t.light || (Prefs.look(this) == Prefs.LOOK_GLASS) != t.glassLook) { recreate(); return; }
         if (!wallpaperKey().equals(drawnWallpaper)) bindWallpaper();
         View aur = root.findViewWithTag("aurora");
         if (aur instanceof AuroraView) ((AuroraView) aur).setPaused(false);
@@ -226,13 +226,13 @@ public class TheaterActivity extends Activity implements AppAdapter.TileListener
     private void styleClock() {
         boolean large = Prefs.largeType(this);
         clock.setTextColor(t.text);
-        clock.setFontVariationSettings("'wght' 300");
+        Ui.weigh(clock, 300);
         clock.setTextSize(large ? 46 : 40);
         String f = Prefs.clock24h(this) ? "H:mm" : "h:mm";
         clock.setFormat12Hour(f);
         clock.setFormat24Hour(f);
         date.setTextColor(t.light ? 0xB80B0F14 : 0xCCF2F4F7);
-        date.setFontVariationSettings("'wght' 300");
+        Ui.weigh(date, 300);
         date.setTextSize(large ? 17 : 15);
         date.setVisibility(Prefs.showDate(this) ? View.VISIBLE : View.GONE);
     }

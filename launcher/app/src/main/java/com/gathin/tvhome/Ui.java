@@ -29,10 +29,20 @@ final class Ui {
         final int green, greenText, orange, orangeText;
         /** Glass opacity from Settings > Transparency: 0 clear .. 1 solid; 0.6 is the shipped look. */
         final float opacity;
+        /** The Glass look (Prefs.look): frosted surfaces, and a focused surface is solid white. */
+        final boolean glassLook;
+        /** Glass look only: the focused surface's fill, and whether text on it must turn dark. */
+        final int focusWhite;
+        final boolean inkOnFocus;
 
-        T(boolean light) { this(light, 40); }
+        T(boolean light) { this(light, 40, false); }
 
-        T(boolean light, int transparency) {
+        T(boolean light, int transparency) { this(light, transparency, false); }
+
+        T(boolean light, int transparency, boolean glassLook) {
+            this.glassLook = glassLook;
+            this.focusWhite = light ? 0xFFFFFFFF : 0xFFF2F4F7;
+            this.inkOnFocus = glassLook && !light;
             this.opacity = 1f - Math.max(0, Math.min(100, transparency)) / 100f;
             this.light = light;
             gold = 0xFFE0A526; teal = 0xFF2BB3A3; red = 0xFFCF5B5B; ink = 0xFF0B0F14; onGold = 0xFF0B0F14;
@@ -41,19 +51,40 @@ final class Ui {
             if (!light) {
                 text = 0xFFF2F4F7; dim = 0xFF9AA6B2; idle = 0xFF55606B;
                 goldText = gold; tealText = teal; redText = red;
-                panel = surface(0xD1121A23, 0xF5121A23, opacity); edge = 0xFF1C2733;
-                glass = surface(0x13FFFFFF, 0xF2172230, opacity); glassEdge = 0x29FFFFFF; plate = 0x21FFFFFF;
-                dimmer = 0x9E060C12; markGold = 0xBFE0A526; markText = 0x61F2F4F7;
+                // Night Glass: brighter frost and a lighter dim, so the photo reads through
+                panel = glassLook ? surface(0x24FFFFFF, 0xF5121A23, opacity) : surface(0xD1121A23, 0xF5121A23, opacity);
+                edge = glassLook ? 0x30FFFFFF : 0xFF1C2733;
+                glass = surface(glassLook ? 0x1FFFFFFF : 0x13FFFFFF, 0xF2172230, opacity);
+                glassEdge = glassLook ? 0x30FFFFFF : 0x29FFFFFF; plate = 0x21FFFFFF;
+                dimmer = glassLook ? 0x70060C12 : 0x9E060C12; markGold = 0xBFE0A526; markText = 0x61F2F4F7;
             } else {
                 text = 0xFF0B0F14; dim = 0xFF5B6977; idle = 0xFF9AA6B2;
                 goldText = 0xFF8F6208; tealText = 0xFF167F73; redText = 0xFFB04040;
-                panel = surface(0xC7FFFFFF, 0xF7FFFFFF, opacity); edge = 0xFFD3DCE5;
-                glass = surface(0x6BFFFFFF, 0xF2F4F7FA, opacity); glassEdge = 0xB3FFFFFF; plate = 0x140B0F14;
-                dimmer = 0x73E8EEF4; markGold = 0xFF9A6B0A; markText = 0x6B0B0F14;
+                // Daylight Glass: frosted white over the photo
+                panel = surface(glassLook ? 0xA8FFFFFF : 0xC7FFFFFF, 0xF7FFFFFF, opacity);
+                edge = glassLook ? 0xD9FFFFFF : 0xFFD3DCE5;
+                glass = surface(glassLook ? 0x9EFFFFFF : 0x6BFFFFFF, 0xF2F4F7FA, opacity);
+                glassEdge = glassLook ? 0xD9FFFFFF : 0xB3FFFFFF; plate = 0x140B0F14;
+                dimmer = glassLook ? 0x38E8EEF4 : 0x73E8EEF4; markGold = 0xFF9A6B0A; markText = 0x6B0B0F14;
             }
         }
 
-        static T of(Context c) { return new T(ThemeManager.isLight(c), Prefs.transparency(c)); }
+        /** Text that sits on a solid white focused surface (Night Glass): the light theme's colour for it. */
+        int onWhite(int c) {
+            switch (c) {
+                case 0xFF3FB950: return 0xFF1F7A32;   // green
+                case 0xFFF0883E: return 0xFFB3561A;   // orange
+                case 0xFFCF5B5B: return 0xFFB04040;   // red
+                case 0xFFE0A526: return 0xFF8F6208;   // gold
+                case 0xFF2BB3A3: return 0xFF167F73;   // teal
+                case 0xFF9AA6B2: return 0xFF5B6977;   // dim
+            }
+            int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+            if (r * 299 + g * 587 + b * 114 < 128_000) return c;           // already dark enough
+            return (c & 0xFF000000) | 0x0B0F14;                              // light text -> ink, same alpha
+        }
+
+        static T of(Context c) { return new T(ThemeManager.isLight(c), Prefs.transparency(c), Prefs.look(c) == Prefs.LOOK_GLASS); }
 
         /**
          * A surface at this opacity. Up to the shipped 0.6 it fades from clear to its normal
@@ -117,14 +148,57 @@ final class Ui {
         return outfit;
     }
 
+    /** Outfit at each weight, made once: {weight -> Typeface}. Main thread only. */
+    private static final android.util.SparseArray<Typeface> WEIGHTS = new android.util.SparseArray<>();
+    private static java.io.File outfitFile;
+    private static boolean weightsFailed;
+
+    /**
+     * Outfit with its 'wght' axis set, built once per weight and shared. TextView.setFontVariationSettings
+     * builds a new variation instance for every view (~8 ms each on the TV: a 10-agent screen spent
+     * 0.65 s on it); a Typeface.Builder instance made once costs that only the first time.
+     * Null if the font can't be built this way (then weigh() falls back to the per-view call).
+     */
+    static Typeface weight(Context c, int w) {
+        Typeface hit = WEIGHTS.get(w);
+        if (hit != null || weightsFailed) return hit;
+        try {
+            if (outfitFile == null) {   // Typeface.Builder wants a file: the font resource, copied once per run
+                java.io.File f = new java.io.File(c.getApplicationContext().getCodeCacheDir(), "outfit.ttf");
+                java.io.File tmp = new java.io.File(f.getPath() + ".tmp");
+                try (java.io.InputStream in = c.getResources().openRawResource(R.font.outfit);
+                     java.io.OutputStream out = new java.io.FileOutputStream(tmp)) {
+                    byte[] buf = new byte[16384];
+                    int n;
+                    while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                }
+                if (!tmp.renameTo(f)) throw new java.io.IOException("rename");
+                outfitFile = f;
+            }
+            hit = new Typeface.Builder(outfitFile).setFontVariationSettings("'wght' " + w).build();
+            if (hit == null) throw new IllegalStateException("no typeface");
+        } catch (Throwable e) {
+            weightsFailed = true;
+            return null;
+        }
+        WEIGHTS.put(w, hit);
+        return hit;
+    }
+
+    /** Set a TextView in Outfit at this weight (the shared instance when there is one). */
+    static void weigh(TextView v, int w) {
+        Typeface tf = weight(v.getContext(), w);
+        if (tf != null) { v.setFontVariationSettings(null); v.setTypeface(tf); }
+        else { v.setTypeface(outfit(v.getContext())); v.setFontVariationSettings("'wght' " + w); }
+    }
+
     /** A TextView in Outfit at a variable weight. sp follows the blueprint's sp column. */
     static TextView text(Context c, CharSequence s, float sp, int color, int weight) {
         TextView t = new TextView(c);
         t.setText(s);
         t.setTextSize(sp);
         t.setTextColor(color);
-        t.setTypeface(outfit(c));
-        t.setFontVariationSettings("'wght' " + weight);
+        weigh(t, weight);
         t.setIncludeFontPadding(false);
         return t;
     }
@@ -290,7 +364,7 @@ final class Ui {
         tc.setTextSize(18);
         tc.setTextColor(t.text);
         tc.setTypeface(outfit(c));
-        tc.setFontVariationSettings("'wght' 300");
+        weigh(tc, 300);
         tc.setIncludeFontPadding(false);
         return tc;
     }

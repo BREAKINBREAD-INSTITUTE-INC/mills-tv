@@ -73,10 +73,13 @@ public class AgentActivity extends Screen {
         TextView bl = Ui.text(this, a != null ? a.label() : "Unknown", 20, t.text, 300);
         LinearLayout.LayoutParams blp = Ui.lp(-2, -2); blp.leftMargin = Ui.dp(this, 8);
         big.addView(bl, blp);
-        TextView em = Ui.text(this, fresh ? "  ·  as reported by Mission Control" : "  ·  last reading " + Live.ago(m.at),
-                15, fresh ? t.goldText : t.dim, 400);
-        big.addView(em);
-        hero.addView(big, Ui.lpTop(this, -2, -2, 20));
+        hero.addView(big, Ui.lpTop(this, -2, -2, 14));
+        // on its own line: beside a long reason ("Up · machine and model answering") it wrapped in two
+        TextView em = Ui.text(this, fresh ? "as reported by Mission Control" : "last reading " + Live.ago(m.at),
+                11, fresh ? t.goldText : t.dim, 400);
+        LinearLayout.LayoutParams emp = Ui.lpTop(this, -2, -2, 3);
+        emp.leftMargin = Ui.dp(this, 16);
+        hero.addView(em, emp);
 
         // facts, 3 across
         GridLayout facts = new GridLayout(this);
@@ -87,7 +90,7 @@ public class AgentActivity extends Screen {
         fact(facts, "LAST UPDATE", m.at > 0 ? Live.ago(m.at) : "never");
         fact(facts, "HUB LOAD", m.loadPct >= 0 ? m.loadPct + "%" : "—");
         fact(facts, "USAGE TODAY", "not reported");
-        hero.addView(facts, Ui.lpTop(this, -2, -2, 18));
+        hero.addView(facts, Ui.lpTop(this, -2, -2, 10));
 
         // the five controls
         LinearLayout ctrls = Ui.vbox(this);
@@ -123,7 +126,7 @@ public class AgentActivity extends Screen {
         if (!controls) {
             TextView nc = Ui.text(this, "CONTROLS NEED CONNECTION", 7.5f, t.goldText, 600);
             nc.setLetterSpacing(0.14f);
-            hero.addView(nc, Ui.lpTop(this, -2, -2, 20));
+            hero.addView(nc, Ui.lpTop(this, -2, -2, 16));
         }
         hero.addView(ctrls, Ui.lpTop(this, -2, -2, controls ? 26 : 8));
 
@@ -136,7 +139,7 @@ public class AgentActivity extends Screen {
                 9, (t.dim & 0x00FFFFFF) | 0xBF000000, 300);
         note.setMaxWidth(Ui.dp(this, 500));
         note.setLineSpacing(0, 1.3f);
-        hero.addView(note, Ui.lpTop(this, -2, -2, 18));
+        hero.addView(note, Ui.lpTop(this, -2, -2, 10));
 
         // side: recent activity + health
         LinearLayout act = glass(16);

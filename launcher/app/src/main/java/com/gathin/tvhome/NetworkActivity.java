@@ -100,11 +100,14 @@ public class NetworkActivity extends Screen {
         List<String[]> out = new ArrayList<>();   // {name, ip, state}
         String gw = gateway();
         if (gw != null) out.add(new String[]{"Gateway", gw, ""});
-        out.add(new String[]{"Home hub · Mission Control", Prefs.hub(this), ""});
+        out.add(new String[]{"HUB · home hub", Prefs.hub(this), ""});
+        out.add(new String[]{"NAS · NAS", NAS_IP, ""});
         // The Nest answers over Matter through the bridge; that read is the proof it's online.
         Live.House h = Live.fetchHouseBlocking(getApplicationContext());
         String[] nest = {"Nest thermostat", "via Matter", h.fresh() ? "online" : "no answer"};
-        // (The agent machines live on their own network, so they aren't probed from here.)
+        // The AI machines live on their own network (VLAN 101), so the TV can't probe them.
+        // The hub reads Tailscale's own view of each and serves it in /api/status "machines".
+        List<String[]> ai = aiMachines();
         // all at once: the screen waits for the slowest device, not the sum of them
         List<Thread> threads = new ArrayList<>();
         for (final String[] d : out) {
@@ -115,7 +118,38 @@ public class NetworkActivity extends Screen {
         for (Thread th : threads) { try { th.join(4000); } catch (InterruptedException ignored) {} }
         for (String[] d : out) if (d[2].isEmpty()) d[2] = "no answer";
         out.add(nest);
+        out.addAll(ai);
         return out;
+    }
+
+    static final String NAS_IP = "192.168.1.x";
+
+    /** The hub's Tailscale view of the AI machines: ok online, warn partial, bad offline, idle never seen. */
+    private List<String[]> aiMachines() {
+        List<String[]> l = new ArrayList<>();
+        try {
+            String body = Live.get(Live.missionUrl(getApplicationContext()), 3000);
+            org.json.JSONArray a = body == null ? null : new org.json.JSONObject(body).optJSONArray("machines");
+            if (a != null) for (int i = 0; i < a.length(); i++) {
+                org.json.JSONObject m = a.getJSONObject(i);
+                String st = m.optString("state", "");
+                String word = Ui.Status.OK.equals(st) ? "online" : Ui.Status.WARN.equals(st) ? "partial"
+                        : Ui.Status.BAD.equals(st) ? "offline" : "never seen";
+                l.add(new String[]{m.optString("name", "?"), "tailnet", word});
+            }
+        } catch (Exception ignored) {}
+        if (l.isEmpty()) l.add(new String[]{"AI machines", "via the hub", "no answer"});
+        return l;
+    }
+
+    /** The colour and text colour for a device's state word. */
+    private String stateOf(String word) {
+        switch (word) {
+            case "online":     return Ui.Status.OK;
+            case "partial":    return Ui.Status.WARN;
+            case "never seen": return Ui.Status.IDLE;
+            default:           return Ui.Status.BAD;
+        }
     }
 
     private String gateway() {
@@ -134,7 +168,7 @@ public class NetworkActivity extends Screen {
 
     /** Alive if any common port accepts or refuses; a timeout on all of them is "no answer". */
     private static boolean answers(String ip) {
-        int[] ports = {80, 443, 22, 8777};
+        int[] ports = {80, 443, 22, 445, 8777};   // 445: the NAS answers on SMB
         for (int port : ports) {
             try (Socket s = new Socket()) {
                 s.connect(new InetSocketAddress(ip, port), 450);
@@ -165,15 +199,15 @@ public class NetworkActivity extends Screen {
         grid.addView(c2, c2p);
         for (int i = 0; i < list.size(); i++) {
             String[] d = list.get(i);
-            boolean on = "online".equals(d[2]);
+            String st = stateOf(d[2]);
             LinearLayout r = Ui.hbox(this);
             r.setGravity(Gravity.CENTER_VERTICAL);
-            r.addView(Ui.dot(this, on ? t.green : t.red, 5));
+            r.addView(Ui.dot(this, t.state(st), 5));
             TextView nm = Ui.single(Ui.text(this, d[0], 10.5f, t.text, 400));
             LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(0, -2, 1f); np.leftMargin = Ui.dp(this, 8);
             r.addView(nm, np);
             r.addView(Ui.text(this, d[1] + "  ", 9, t.dim, 300));
-            r.addView(Ui.text(this, d[2], 10, on ? t.greenText : t.redText, 500));
+            r.addView(Ui.text(this, d[2], 10, t.stateText(st), 500));
             (i % 2 == 0 ? c1 : c2).addView(r, Ui.lpTop(this, -1, -2, 8));
         }
         devices.addView(grid, Ui.lpTop(this, -1, -2, 2));

@@ -28,8 +28,6 @@ public class FrostLayout extends LinearLayout {
     private final RectF rect = new RectF();
     private final Path clip = new Path();
     private final Rect src = new Rect();
-    private final int[] here = new int[2];
-    private final int[] rootAt = new int[2];
     private final float stroke;
     private float radius;
     private Bitmap frost;
@@ -86,15 +84,26 @@ public class FrostLayout extends LinearLayout {
         updateSource();
     }
 
-    /** Map this view's rect on the wallpaper (the root view) to frost-bitmap pixels. */
+    /**
+     * Map this view's rect on the wallpaper to frost-bitmap pixels. The wallpaper is the nearest
+     * ancestor with id "root" (the Home layout), else the window. Positions are summed in layout
+     * coordinates up to it, so a scaled copy of Home (the Settings preview at 48%) maps the same as
+     * the real one; window coordinates are scaled there and the frost covered only part of the dock.
+     */
     private void updateSource() {
-        View root = getRootView();
-        if (frost == null || root == null || root.getWidth() == 0 || getWidth() == 0) return;
-        getLocationInWindow(here);
-        root.getLocationInWindow(rootAt);
+        if (frost == null || getWidth() == 0) return;
+        float x = 0, y = 0;
+        View v = this, root = getRootView();
+        while (v != null && v.getId() != R.id.root && v.getParent() instanceof View) {
+            View p = (View) v.getParent();
+            x += v.getLeft() + v.getTranslationX() - p.getScrollX();
+            y += v.getTop() + v.getTranslationY() - p.getScrollY();
+            v = p;
+        }
+        if (v != null && v.getId() == R.id.root) root = v;
+        if (root == null || root.getWidth() == 0) return;
         float sx = frost.getWidth() / (float) root.getWidth();
         float sy = frost.getHeight() / (float) root.getHeight();
-        int x = here[0] - rootAt[0], y = here[1] - rootAt[1];
         src.set(Math.round(x * sx), Math.round(y * sy),
                 Math.round((x + getWidth()) * sx), Math.round((y + getHeight()) * sy));
     }

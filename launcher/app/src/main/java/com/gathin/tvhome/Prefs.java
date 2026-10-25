@@ -144,6 +144,12 @@ final class Prefs {
     static int transparency(Context c)            { return i(c, "glass_transparency", 40); }
     static void setTransparency(Context c, int v) { put(c, "glass_transparency", Math.max(0, Math.min(100, v))); }
 
+    /** The look (JJ, Oct 25): Glass (frosted cards, solid white focus; Daylight by day, Night after
+     *  sunset with Mode Auto) or Classic (the dark panels and gold ring). Glass is the default. */
+    static final int LOOK_CLASSIC = 0, LOOK_GLASS = 1;
+    static int look(Context c)            { return i(c, "look", LOOK_GLASS); }
+    static void setLook(Context c, int v) { put(c, "look", v); }
+
     // ----- screensaver (ClockDream) -----
     static final int SS_CLOCK = 0, SS_STATUS = 1, SS_WALLPAPER = 2, SS_MINIMAL = 3;
     static int ssStyle(Context c)             { return i(c, "ss_style", SS_CLOCK); }

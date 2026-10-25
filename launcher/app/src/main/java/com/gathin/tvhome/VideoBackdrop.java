@@ -34,6 +34,41 @@ public class VideoBackdrop extends FrameLayout implements SurfaceHolder.Callback
     interface OnFail { void failed(); }
 
     private static final long CHECK_MS = 1000;            // while active, look for other playback once a second
+    /**
+     * Tearing a player down (reset + release) takes ~0.7 s on the Bravia's hardware decoder. On the main
+     * thread that froze every move from Home to another screen ("Activity pause timeout", 44 skipped
+     * frames), so it happens here instead, one player at a time, in order.
+     */
+    private static final java.util.concurrent.ExecutorService RELEASER =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> new Thread(r, "mills-video-release"));
+
+    private static final android.os.Handler MAIN = new android.os.Handler(android.os.Looper.getMainLooper());
+
+    /** reset + release a player off the main thread (its listeners should be cleared first). */
+    static void releaseLater(MediaPlayer p) {
+        RELEASER.execute(() -> {
+            try { p.reset(); } catch (Exception ignored) {}
+            try { p.release(); } catch (Exception ignored) {}
+        });
+    }
+
+    /**
+     * Run r on the main thread once every player handed to releaseLater so far has let go: a new
+     * player can't take a surface the old one is still connected to ("already connected").
+     */
+    static void afterReleases(Runnable r) { RELEASER.execute(() -> MAIN.post(r)); }
+
+    private boolean opening;
+
+    /** Open a player once earlier ones are gone, if it is still wanted then. */
+    private void openSoon() {
+        if (opening) return;
+        opening = true;
+        afterReleases(() -> {
+            opening = false;
+            if (mp == null && hasSurface && wanted() && !otherMediaPlaying()) open();
+        });
+    }
 
     private final SurfaceView sv;
     private final ImageView still;
@@ -132,7 +167,7 @@ public class VideoBackdrop extends FrameLayout implements SurfaceHolder.Callback
         boolean want = wanted();
         if (want && !otherMediaPlaying()) {
             if (sv.getVisibility() != VISIBLE) sv.setVisibility(VISIBLE);   // surfaceCreated opens the player
-            else if (mp == null && hasSurface) open();
+            else if (mp == null && hasSurface) openSoon();
         } else {
             release();
             if (!want) sv.setVisibility(GONE);             // hidden or still: give the layer back too
@@ -173,8 +208,11 @@ public class VideoBackdrop extends FrameLayout implements SurfaceHolder.Callback
         mp = null;
         if (p == null) return;
         try { if (p.isPlaying()) resumeAt = p.getCurrentPosition(); } catch (Exception ignored) {}
-        try { p.reset(); } catch (Exception ignored) {}
-        try { p.release(); } catch (Exception ignored) {}
+        p.setOnInfoListener(null);
+        p.setOnErrorListener(null);
+        p.setOnPreparedListener(null);
+        p.setOnVideoSizeChangedListener(null);
+        releaseLater(p);
         if (file != null && !failed) still.setVisibility(VISIBLE);   // the layer may go blank; the still covers it
     }
 
@@ -200,7 +238,7 @@ public class VideoBackdrop extends FrameLayout implements SurfaceHolder.Callback
         sv.layout(x, y, x + cw, y + ch);
     }
 
-    @Override public void surfaceCreated(SurfaceHolder h) { hasSurface = true; if (mp == null && wanted() && !otherMediaPlaying()) open(); }
+    @Override public void surfaceCreated(SurfaceHolder h) { hasSurface = true; if (mp == null && wanted() && !otherMediaPlaying()) openSoon(); }
     @Override public void surfaceChanged(SurfaceHolder h, int format, int w, int hh) {}
     @Override public void surfaceDestroyed(SurfaceHolder h) { hasSurface = false; release(); }
 

@@ -15,6 +15,8 @@ import android.widget.TextView;
  * Base for every view behind the command center: the current wallpaper under a 62% dim (D2:
  * panels use the glass tint over the dim, no frost), breadcrumb top-left, small clock top-right,
  * wordmark bottom-left, foot hints bottom-right. Back returns to the command center it came from.
+ * A read-only screen (nothing to focus: readOnly() true) gets the breadcrumb's ‹ as a focused back
+ * button, so the remote always shows where it is and OK goes back too.
  */
 abstract class Screen extends Activity {
 
@@ -62,12 +64,46 @@ abstract class Screen extends Activity {
         root.addView(body, bp);
         setContentView(root);
         build();
+        if (readOnly()) body.post(this::offerBack);
+    }
+
+    /** True for a screen with nothing to focus (a detail page): see offerBack. */
+    protected boolean readOnly() { return false; }
+
+    /** Nothing focusable in the body: the ‹ in the breadcrumb becomes the (focused) way back. */
+    private void offerBack() {
+        java.util.ArrayList<View> f = new java.util.ArrayList<>();
+        body.addFocusables(f, View.FOCUS_DOWN);
+        if (!f.isEmpty() || !(crumbView instanceof android.view.ViewGroup)) return;   // something to focus after all
+        View back = ((android.view.ViewGroup) crumbView).getChildAt(0);
+        if (back == null) return;
+        // the ring turns gold and fills faintly when focused (a state list: no listener to miss)
+        android.graphics.drawable.GradientDrawable on = new android.graphics.drawable.GradientDrawable(), off = new android.graphics.drawable.GradientDrawable();
+        on.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        on.setStroke(Ui.dp(this, 1.5f), t.gold);
+        on.setColor((t.gold & 0x00FFFFFF) | 0x33000000);
+        off.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        off.setStroke(Math.max(1, Ui.dp(this, 0.5f)), t.glassEdge);
+        android.graphics.drawable.StateListDrawable ring = new android.graphics.drawable.StateListDrawable();
+        ring.addState(new int[]{android.R.attr.state_focused}, on);
+        ring.addState(new int[]{}, off);
+        back.setBackground(ring);
+        back.setFocusable(true);
+        back.setFocusableInTouchMode(true);
+        back.setClickable(true);
+        back.setContentDescription("Back");
+        back.setOnClickListener(v -> onBackPressed());
+        back.setOnFocusChangeListener((v, has) -> {
+            float sc = has ? 1.25f : 1f;
+            v.animate().scaleX(sc).scaleY(sc).setDuration(Motion.ms(this, 160)).start();
+        });
+        back.requestFocus();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        if (ThemeManager.isLight(this) != t.light) { recreate(); return; }
+        if (ThemeManager.isLight(this) != t.light || (Prefs.look(this) == Prefs.LOOK_GLASS) != t.glassLook) { recreate(); return; }
         refresh();
         main.removeCallbacks(tick);
         main.postDelayed(tick, 30_000L);

@@ -45,6 +45,15 @@ final class Live {
 
     static final class Agent {
         String name, status, note, host;
+        /** JJ's own name and note for the tile (Mission Control edit mode); the hub's defaults beside them. */
+        String label = "", defaultLabel = "", defaultNote = "";
+        String shown() { return label.isEmpty() ? name : label; }
+        Agent copy() {
+            Agent c = new Agent();
+            c.name = name; c.status = status; c.note = note; c.host = host; c.checked = checked; c.why = why;
+            c.label = label; c.defaultLabel = defaultLabel; c.defaultNote = defaultNote;
+            return c;
+        }
         /** Checked by the hub (ok/warn/bad/idle) and its plain words; empty from an older hub. */
         String checked = "", why = "";
         /** ok/warn/bad/idle: the hub's own check, or a best guess from an older hub's status word. */
@@ -85,6 +94,58 @@ final class Live {
         }
     }
 
+    /** One of the Sparks or NAS, as the hub checked it (/api/status "infra"). */
+    static final class Machine {
+        String name = "", kind = "", role = "", model = "", engine = "", why = "", checked = "";
+        /** JJ's own name and note (edit mode; the note shows as the role); the hub's defaults beside them. */
+        String label = "", defaultLabel = "", defaultNote = "";
+        String shown() { return label.isEmpty() ? name : label; }
+        Machine copy() {
+            Machine c = new Machine();
+            c.name = name; c.kind = kind; c.role = role; c.model = model; c.engine = engine; c.why = why; c.checked = checked;
+            c.ip = ip; c.note = note; c.standIn = standIn; c.speed = speed; c.speedAt = speedAt; c.online = online; c.lastSeen = lastSeen;
+            c.label = label; c.defaultLabel = defaultLabel; c.defaultNote = defaultNote;
+            c.agents.addAll(agents); c.facts.addAll(facts); c.stores.addAll(stores);
+            return c;
+        }
+        /** For the detail screen; empty or null from an older hub. */
+        String ip = "", note = "", standIn = "", speed = "", speedAt = "";
+        Boolean online;           // the tailnet's view (Sparks); null when the hub didn't say
+        long lastSeen;            // the tailnet's last sighting, 0 when it never said
+        final List<String> agents = new ArrayList<>();
+        final List<String[]> facts = new ArrayList<>();   // {key, value}
+        final List<Stored> stores = new ArrayList<>();
+        boolean nas() { return "nas".equals(kind); }
+        String state() {
+            switch (checked) {
+                case Ui.Status.OK: case Ui.Status.WARN: case Ui.Status.BAD: return checked;
+                default: return Ui.Status.IDLE;
+            }
+        }
+        /** "gpt-oss-120b · vLLM 0.20.1" for a Spark; the box itself for NAS. */
+        String spec() {
+            if (model.isEmpty()) return engine;
+            return engine.isEmpty() ? model : model + " · " + engine;
+        }
+        /** {free, total} in TB from the hub's "11.2 TB free of 14.6 TB", or null when it didn't say. */
+        double[] space() {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("([\\d.]+) TB free of ([\\d.]+) TB").matcher(why);
+            if (!m.find()) return null;
+            try {
+                double free = Double.parseDouble(m.group(1)), total = Double.parseDouble(m.group(2));
+                return total > 0 ? new double[]{free, total} : null;
+            } catch (NumberFormatException e) { return null; }
+        }
+    }
+
+    /** One thing kept on NAS, as the hub read it. */
+    static final class Stored {
+        String name = "";
+        boolean present;
+        int clips = -1, items = -1;
+        long bytes = -1, updated;   // updated: the folder's last change, ms
+    }
+
     static final class Mission {
         boolean ok;               // the last fetch answered
         long at;                  // when the data shown was fetched
@@ -92,6 +153,7 @@ final class Live {
         int loadPct = -1, models = -1;
         double memGb = -1;
         final List<Agent> agents = new ArrayList<>();
+        final List<Machine> infra = new ArrayList<>();   // empty from an older hub
 
         boolean stale() { return at == 0 || System.currentTimeMillis() - at > STALE_MS; }
         /** How many agents are in this state (Ui.Status.OK / WARN / BAD / IDLE). */
@@ -117,6 +179,7 @@ final class Live {
             return sb.length() == 0 ? (agents.isEmpty() ? "no agents" : count(Ui.Status.IDLE) + " not built") : sb.toString();
         }
         Agent find(String name) { for (Agent a : agents) if (a.name.equalsIgnoreCase(name)) return a; return null; }
+        Machine machine(String name) { for (Machine x : infra) if (x.name.equalsIgnoreCase(name)) return x; return null; }
     }
 
     private static Mission mission = new Mission();
@@ -151,7 +214,53 @@ final class Live {
                         ag.host = j.optString("host", "");
                         ag.checked = j.optString("state", "");
                         ag.why = j.optString("why", "");
+                        ag.label = j.optString("label", "");
+                        ag.defaultLabel = j.optString("default_label", ag.name);
+                        ag.defaultNote = j.optString("default_note", ag.note);
                         m.agents.add(ag);
+                    }
+                    JSONArray inf = o.optJSONArray("infra");
+                    if (inf != null) for (int i = 0; i < inf.length(); i++) {
+                        JSONObject j = inf.getJSONObject(i);
+                        Machine mc = new Machine();
+                        mc.name = j.optString("name", "?");
+                        mc.kind = j.optString("kind", "");
+                        mc.role = j.optString("role", "");
+                        mc.model = j.optString("model", "");
+                        mc.engine = j.optString("engine", "");
+                        mc.checked = j.optString("state", "");
+                        mc.why = j.optString("why", "");
+                        mc.ip = j.optString("ip", "");
+                        mc.note = j.optString("note", "");
+                        mc.standIn = j.optString("stand_in", "");
+                        mc.speed = j.optString("speed", "");
+                        mc.speedAt = j.optString("speed_at", "");
+                        mc.label = j.optString("label", "");
+                        mc.defaultLabel = j.optString("default_label", mc.name);
+                        mc.defaultNote = j.optString("default_note", mc.role);
+                        if (j.has("online")) mc.online = j.optBoolean("online");
+                        String seen = j.optString("last_seen", "");
+                        if (!seen.isEmpty()) try { mc.lastSeen = java.time.Instant.parse(seen).toEpochMilli(); } catch (Exception ignored) {}
+                        JSONArray ag = j.optJSONArray("agents");
+                        if (ag != null) for (int k = 0; k < ag.length(); k++) mc.agents.add(ag.optString(k));
+                        JSONArray fa = j.optJSONArray("facts");
+                        if (fa != null) for (int k = 0; k < fa.length(); k++) {
+                            JSONArray f = fa.optJSONArray(k);
+                            if (f != null && f.length() >= 2) mc.facts.add(new String[]{f.optString(0), f.optString(1)});
+                        }
+                        JSONArray st = j.optJSONArray("stores");
+                        if (st != null) for (int k = 0; k < st.length(); k++) {
+                            JSONObject so = st.getJSONObject(k);
+                            Stored sd = new Stored();
+                            sd.name = so.optString("name", "?");
+                            sd.present = so.optBoolean("present", false);
+                            sd.clips = so.optInt("clips", -1);
+                            sd.items = so.optInt("items", -1);
+                            sd.bytes = so.optLong("bytes", -1);
+                            sd.updated = so.optLong("updated", 0) * 1000L;
+                            mc.stores.add(sd);
+                        }
+                        m.infra.add(mc);
                     }
                 }
             } catch (Exception ignored) {}
@@ -192,6 +301,14 @@ final class Live {
         long at;                  // when the bridge read the thermostat
         Integer indoorF, heatF, coolF, humidity;
         String mode, running, name, error;
+        // bridge v2: what may be changed, and how far (all empty from a v1 bridge: no controls)
+        boolean controls, runningExposed;
+        String modeKey;                                   // Off / Heat / Cool / Auto
+        final List<String> modes = new ArrayList<>();     // only what the Nest accepts
+        int heatMin = 68, heatMax = 82, coolMin = 68, coolMax = 82, gapF = 3;
+        /** The last change the bridge confirmed: "cool 75° → 76° · TV", and when. */
+        String lastWhat; long lastAt;
+        boolean canControl() { return fresh() && controls; }
         boolean fresh() { return bridge && ok && at > 0 && System.currentTimeMillis() - at < STALE_MS; }
         String state() { return fresh() ? ("heating".equals(running) ? Ui.Status.WARN : Ui.Status.OK) : Ui.Status.IDLE; }
         String chip() {
@@ -211,32 +328,153 @@ final class Live {
     private static House house = new House();
     static House house() { return house; }
 
+    static String houseBase(Context ctx) { return "http://" + Prefs.hub(ctx) + ":8778/api/house"; }
+
     static House fetchHouseBlocking(Context ctx) {
         House h = new House();
         try {
-            String body = get("http://" + Prefs.hub(ctx) + ":8778/api/house", 2500);
+            String body = get(houseBase(ctx), 2500);
             if (body != null) {
-                JSONObject o = new JSONObject(body);
-                h.bridge = true;
-                h.paired = o.optBoolean("paired", false);
-                h.ok = o.optBoolean("ok", false);
-                h.at = o.optLong("at", 0);
-                h.indoorF = o.isNull("indoorF") ? null : o.optInt("indoorF");
-                h.heatF = o.isNull("heatF") ? null : o.optInt("heatF");
-                h.coolF = o.isNull("coolF") ? null : o.optInt("coolF");
-                h.humidity = o.isNull("humidity") ? null : o.optInt("humidity");
-                h.mode = o.isNull("mode") ? null : o.optString("mode");
-                h.running = o.isNull("running") ? null : o.optString("running");
-                h.name = o.isNull("name") ? null : o.optString("name");
-                h.error = o.isNull("error") ? null : o.optString("error");
+                house = h = parseHouse(new JSONObject(body));
+                return h;
             }
         } catch (Exception ignored) {}
         house = h;
         return h;
     }
 
+    /** One reading from the bridge's JSON (GET /api/house, or the "house" in a change's answer). */
+    static House parseHouse(JSONObject o) {
+        House h = new House();
+        h.bridge = true;
+        h.paired = o.optBoolean("paired", false);
+        h.ok = o.optBoolean("ok", false);
+        h.at = o.optLong("at", 0);
+        h.indoorF = o.isNull("indoorF") ? null : o.optInt("indoorF");
+        h.heatF = o.isNull("heatF") ? null : o.optInt("heatF");
+        h.coolF = o.isNull("coolF") ? null : o.optInt("coolF");
+        h.humidity = o.isNull("humidity") ? null : o.optInt("humidity");
+        h.mode = o.isNull("mode") ? null : o.optString("mode");
+        h.running = o.isNull("running") ? null : o.optString("running");
+        h.name = o.isNull("name") ? null : o.optString("name");
+        h.error = o.isNull("error") ? null : o.optString("error");
+        h.controls = o.optBoolean("controls", false);
+        h.runningExposed = o.optBoolean("runningExposed", false);
+        // a v2 bridge says when the Nest doesn't share its running state: then "idle" is only a
+        // placeholder, so the cards show nothing rather than a guess
+        if (h.controls && !h.runningExposed) h.running = null;
+        h.modeKey = o.isNull("modeKey") ? null : o.optString("modeKey", null);
+        JSONArray ms = o.optJSONArray("modes");
+        if (ms != null) for (int i = 0; i < ms.length(); i++) h.modes.add(ms.optString(i));
+        JSONObject lim = o.optJSONObject("limits");
+        if (lim != null) {
+            JSONObject hl = lim.optJSONObject("heat"), cl = lim.optJSONObject("cool");
+            if (hl != null) { h.heatMin = hl.optInt("minF", 68); h.heatMax = hl.optInt("maxF", 82); }
+            if (cl != null) { h.coolMin = cl.optInt("minF", 68); h.coolMax = cl.optInt("maxF", 82); }
+            h.gapF = lim.optInt("gapF", 3);
+        }
+        JSONObject lc = o.optJSONObject("lastChange");
+        if (lc != null) {
+            String what = lc.optString("what");
+            boolean deg = !"mode".equals(what);
+            h.lastWhat = what + " " + lc.opt("old") + (deg ? "°" : "") + " → " + lc.opt("new") + (deg ? "°" : "")
+                    + " · " + lc.optString("who");
+            try { h.lastAt = java.time.OffsetDateTime.parse(lc.optString("at")).toInstant().toEpochMilli(); }
+            catch (Exception e) { h.lastAt = 0; }
+        }
+        return h;
+    }
+
+    /** What the bridge said to a change: ok with the read-back value, or the reason it didn't happen. */
+    static final class HouseChange {
+        boolean ok;
+        int code;                 // HTTP status (0: the bridge didn't answer)
+        Integer confirmedF;       // the setpoint read back from the Nest
+        String confirmedMode, error;
+        int retryAfterSec;        // 429: when the bridge will take the next change
+        House house;              // the reading after the change, when the bridge sent one
+    }
+
+    /** POST /api/house/{cool|heat|mode} and wait for the Nest's read-back. Background thread only. */
+    static HouseChange changeHouseBlocking(Context ctx, String what, JSONObject body) {
+        HouseChange r = new HouseChange();
+        try {
+            String[] got = post(houseBase(ctx) + "/" + what, body.toString(), 3000, 15000);
+            r.code = Integer.parseInt(got[0]);
+            JSONObject o = new JSONObject(got[1]);
+            r.ok = o.optBoolean("ok", false);
+            r.error = o.optString("error", r.ok ? null : "HTTP " + r.code);
+            r.retryAfterSec = o.optInt("retryAfterSec", 0);
+            JSONObject c = o.optJSONObject("confirmed");
+            if (c != null) {
+                if (c.has("coolF") && !c.isNull("coolF")) r.confirmedF = c.optInt("coolF");
+                if (c.has("heatF") && !c.isNull("heatF")) r.confirmedF = c.optInt("heatF");
+                if (c.has("mode")) r.confirmedMode = c.optString("mode");
+            }
+            JSONObject h = o.optJSONObject("house");
+            if (h != null) { r.house = parseHouse(h); r.house.bridge = true; house = r.house; }
+        } catch (Exception e) {
+            r.ok = false;
+            r.error = "bridge not answering";
+        }
+        return r;
+    }
+
+    static String layoutUrl(Context ctx) { return "http://" + Prefs.hub(ctx) + ":8777/api/layout"; }
+    static String budgetUrl(Context ctx) { return "http://" + Prefs.hub(ctx) + ":8777/api/budget"; }
+
+    /** Save JJ's Mission Control layout on Hub (blocking). Null when saved, else why not. */
+    static String saveLayoutBlocking(Context ctx, JSONObject layout) {
+        try {
+            String[] r = post(layoutUrl(ctx), layout.toString(), 2500, 4000);
+            if ("200".equals(r[0])) return null;
+            return new JSONObject(r[1]).optString("why", "Hub said " + r[0]);
+        } catch (Exception e) { return "Hub not answering"; }
+    }
+
+    // ---- the monthly housing budget (Hub's /api/budget, from JJ's bills; private, LAN only) -----
+
+    static final class Budget {
+        boolean ok;
+        long at, updated;         // when fetched; when the bills file last changed
+        String why = "", source = "";
+        double total;
+        final List<String[]> items = new ArrayList<>();   // {label, basis}
+        final List<Double> amounts = new ArrayList<>();
+    }
+
+    private static Budget budget = new Budget();
+    static Budget budget() { return budget; }
+
+    static Budget fetchBudgetBlocking(Context ctx) {
+        Budget b = new Budget();
+        try {
+            String body = get(budgetUrl(ctx), 2500);
+            if (body != null) {
+                JSONObject o = new JSONObject(body);
+                b.ok = o.optBoolean("ok", false);
+                b.why = o.optString("why", "");
+                b.source = o.optString("source", "");
+                b.total = o.optDouble("total", 0);
+                b.updated = o.optLong("updated", 0) * 1000L;
+                b.at = System.currentTimeMillis();
+                JSONArray a = o.optJSONArray("items");
+                if (a != null) for (int i = 0; i < a.length(); i++) {
+                    JSONObject j = a.getJSONObject(i);
+                    b.items.add(new String[]{j.optString("label", "?"), j.optString("basis", "")});
+                    b.amounts.add(j.optDouble("monthly", 0));
+                }
+            }
+        } catch (Exception ignored) {}
+        if (b.at == 0 && budget.at > 0) { budget.ok = false; return budget; }   // keep the last reading, by its age
+        budget = b;
+        return b;
+    }
+
     static String missionUrl(Context ctx) { return "http://" + Prefs.hub(ctx) + ":8777/api/status"; }
-    static String blinkBase(Context ctx) { return "http://" + Prefs.hub(ctx) + ":8779/api/blink"; }
+    static String blinkBase(Context ctx) { return blinkHost(ctx) + "/api/blink"; }
+    /** The bridge's origin: clip and thumbnail paths it returns ("/api/blink/clip/…") hang off this. */
+    static String blinkHost(Context ctx) { return "http://" + Prefs.hub(ctx) + ":8779"; }
 
     // ---- cameras: Blink, read by the Blink bridge on the hub (~/Scripts/tv/blink-bridge) -------------
 
@@ -245,7 +483,25 @@ final class Live {
         boolean doorbell, online, hasThumb;
         Boolean armed, motion;
         Integer tempF;
-        String lastRecord;
+        String lastRecord, networkId;
+        /** Changes only when Blink has a new snapshot (null from an older bridge: always re-fetch). */
+        String thumbKey;
+        /** Clips today (NAS archive + Blink's cloud, local day), and the last motion or ring in ms (0 = none known). */
+        int clipsToday;
+        long lastMotionAt;
+        /** Blink names can carry a trailing space ("Porch "): show the trimmed one, keep the raw one for the bridge. */
+        String label() { return name == null ? "" : name.trim(); }
+        /** dBm as a word: Blink reports the Outdoor 4's Wi-Fi in dBm; the doorbell reports none. */
+        String wifiWord() {
+            if (wifi == null || wifi.isEmpty()) return null;
+            try {
+                int d = Integer.parseInt(wifi.trim());
+                if (d >= 0) return wifi;   // not dBm (bars, or a level): say it as it came
+                return (d >= -55 ? "strong" : d >= -67 ? "good" : d >= -75 ? "fair" : "weak") + " · " + d + " dBm";
+            } catch (NumberFormatException e) { return wifi; }
+        }
+        boolean wifiWeak() { try { return Integer.parseInt(wifi.trim()) < -75; } catch (Exception e) { return false; } }
+        boolean batteryLow() { return "low".equalsIgnoreCase(battery); }
     }
 
     static final class CamEvent {
@@ -267,6 +523,8 @@ final class Live {
         String error;
         /** NAS archive: null when the bridge doesn't archive. */
         Boolean archiveOk; int archiveTotal, archivePending; long archiveAt; String archiveError;
+        /** Clips in the archive's index right now, and where the archive lives ("NAS"). */
+        int archiveClips; String archivePlace;
         final List<Cam> cams = new ArrayList<>();
         final List<CamEvent> events = new ArrayList<>();
         boolean fresh() { return bridge && ok && at > 0 && System.currentTimeMillis() - at < STALE_MS; }
@@ -332,6 +590,8 @@ final class Live {
                     c.archivePending = ar.optInt("pending");
                     c.archiveAt = ar.optLong("at");
                     c.archiveError = ar.isNull("error") ? null : ar.optString("error");
+                    c.archiveClips = ar.optInt("clips", c.archiveTotal);
+                    c.archivePlace = ar.isNull("place") ? null : ar.optString("place", null);
                 }
                 JSONArray a = o.optJSONArray("cameras");
                 if (a != null) for (int i = 0; i < a.length(); i++) {
@@ -342,12 +602,16 @@ final class Live {
                     m.doorbell = j.optBoolean("doorbell");
                     m.online = j.optBoolean("online", true);
                     m.hasThumb = j.optBoolean("hasThumb");
+                    m.thumbKey = j.isNull("thumbKey") ? null : j.optString("thumbKey", null);
                     m.armed = j.isNull("armed") ? null : j.optBoolean("armed");
                     m.motion = j.isNull("motionEnabled") ? null : j.optBoolean("motionEnabled");
                     m.battery = j.isNull("battery") ? null : j.optString("battery");
                     m.tempF = j.isNull("temperatureF") ? null : j.optInt("temperatureF");
                     m.wifi = j.isNull("wifi") ? null : j.optString("wifi");
                     m.lastRecord = j.isNull("lastRecord") ? null : j.optString("lastRecord");
+                    m.networkId = j.isNull("networkId") ? null : j.optString("networkId");
+                    m.clipsToday = j.optInt("clipsToday");
+                    m.lastMotionAt = j.isNull("lastMotionAt") ? 0 : j.optLong("lastMotionAt");
                     c.cams.add(m);
                 }
                 JSONArray ev = o.optJSONArray("events");
@@ -384,6 +648,86 @@ final class Live {
         } catch (Exception e) { return null; }
     }
 
+    /** Each camera's latest snapshot, decoded once per new picture: {thumbKey, Bitmap}. */
+    private static final java.util.Map<String, Object[]> SNAPS = new java.util.HashMap<>();
+
+    /**
+     * A camera's latest snapshot, downloaded only when the bridge says Blink has a new one (its
+     * thumbKey changed); otherwise the picture already decoded. Background thread only.
+     */
+    static android.graphics.Bitmap camSnapshot(Context ctx, Cam cam) {
+        Object[] had;
+        synchronized (SNAPS) { had = SNAPS.get(cam.name); }
+        if (had != null && cam.thumbKey != null && cam.thumbKey.equals(had[0])) return (android.graphics.Bitmap) had[1];
+        android.graphics.Bitmap b = camImage(ctx, "/thumb/" + android.net.Uri.encode(cam.name), 2);
+        if (b == null) return had == null ? null : (android.graphics.Bitmap) had[1];
+        synchronized (SNAPS) { SNAPS.put(cam.name, new Object[]{cam.thumbKey, b}); }
+        return b;
+    }
+
+    /** The snapshot already in memory for a camera, or null. */
+    static android.graphics.Bitmap camSnapshotCached(String name) {
+        synchronized (SNAPS) { Object[] had = SNAPS.get(name); return had == null ? null : (android.graphics.Bitmap) had[1]; }
+    }
+
+    // ---- clip history: the NAS archive (and recent cloud clips), through the bridge --------------
+
+    static final class Clip {
+        String id, camera, source, kind, thumb, url;
+        long at;
+        Double duration;
+        boolean archived;
+        /** "motion", "doorbell press", "live view", "snapshot". */
+        String what() {
+            switch (kind == null ? "" : kind) {
+                case "doorbell": return "doorbell press";
+                case "liveview": return "live view";
+                case "snapshot": return "snapshot";
+                default:         return "motion";
+            }
+        }
+        String length() { return duration == null ? null : Math.round(duration) + " s"; }
+    }
+
+    static final class ClipPage {
+        boolean ok;
+        int total, next = -1;
+        int all, motion, doorbell;
+        final List<Clip> clips = new ArrayList<>();
+    }
+
+    /** One page of a camera's clips, newest first. kind: all, motion or doorbell. Background thread only. */
+    static ClipPage fetchClipsBlocking(Context ctx, String camera, int hours, String kind, int offset, int limit) {
+        ClipPage p = new ClipPage();
+        try {
+            String body = get(blinkBase(ctx) + "/clips?camera=" + android.net.Uri.encode(camera) + "&hours=" + hours
+                    + "&kind=" + kind + "&offset=" + offset + "&limit=" + limit, 8000);
+            if (body == null) return p;
+            JSONObject o = new JSONObject(body);
+            p.ok = o.optBoolean("ok");
+            p.total = o.optInt("total");
+            p.next = o.isNull("next") ? -1 : o.optInt("next", -1);
+            JSONObject n = o.optJSONObject("counts");
+            if (n != null) { p.all = n.optInt("all"); p.motion = n.optInt("motion"); p.doorbell = n.optInt("doorbell"); }
+            JSONArray a = o.optJSONArray("clips");
+            if (a != null) for (int i = 0; i < a.length(); i++) {
+                JSONObject j = a.getJSONObject(i);
+                Clip c = new Clip();
+                c.id = j.optString("id");
+                c.camera = j.optString("camera");
+                c.source = j.optString("source");
+                c.kind = j.optString("kind");
+                c.at = j.optLong("at");
+                c.duration = j.isNull("duration") ? null : j.optDouble("duration");
+                c.archived = j.optBoolean("archived");
+                c.thumb = j.optString("thumb");
+                c.url = j.optString("url");
+                p.clips.add(c);
+            }
+        } catch (Exception ignored) { p.ok = false; }
+        return p;
+    }
+
     /** Ask a camera for a fresh snapshot. Returns the bridge's note (rate-limited to 1/min/camera). */
     static String requestSnap(Context ctx, String camera) {
         try {
@@ -413,7 +757,11 @@ final class Live {
     private static Weather weather = new Weather();
     static Weather weather() { return weather; }
 
+    /** Open-Meteo updates its current reading every 15 minutes: asking more often only costs the TV. */
+    private static final long WEATHER_EVERY_MS = 10 * 60_000L;
+
     static Weather fetchWeatherBlocking(Context ctx) {
+        if (weather.has() && System.currentTimeMillis() - weather.at < WEATHER_EVERY_MS) return weather;
         try {
             String lat = ctx.getString(R.string.home_lat), lon = ctx.getString(R.string.home_lon);
             String u = "https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon
@@ -562,6 +910,26 @@ final class Live {
         if (s < 60) return s + "s ago";
         if (s < 3600) return (s / 60) + " min ago";
         return (s / 3600) + " h ago";
+    }
+
+    /** POST JSON; returns {status, body} for any status (the bridge explains its refusals in JSON). */
+    static String[] post(String urlStr, String json, int connectMs, int readMs) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(urlStr).openConnection();
+        c.setConnectTimeout(connectMs);
+        c.setReadTimeout(readMs);
+        c.setRequestMethod("POST");
+        c.setDoOutput(true);
+        c.setRequestProperty("Content-Type", "application/json");
+        try (java.io.OutputStream os = c.getOutputStream()) { os.write(json.getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+        int code = c.getResponseCode();
+        java.io.InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+        StringBuilder sb = new StringBuilder();
+        if (in != null) try (BufferedReader r = new BufferedReader(new InputStreamReader(in))) {
+            String ln;
+            while ((ln = r.readLine()) != null) sb.append(ln);
+        }
+        c.disconnect();
+        return new String[]{String.valueOf(code), sb.length() == 0 ? "{}" : sb.toString()};
     }
 
     static String get(String urlStr, int timeout) throws Exception {

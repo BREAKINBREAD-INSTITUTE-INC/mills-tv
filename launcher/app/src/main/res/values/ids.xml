@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <item name="btnQuick" type="id" />
     <item name="btnWall" type="id" />
     <item name="btnApps" type="id" />
     <item name="btnSettings" type="id" />

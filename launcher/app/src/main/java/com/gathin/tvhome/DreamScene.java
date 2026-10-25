@@ -110,7 +110,7 @@ final class DreamScene {
         clock.setTextColor(0xE6FFFFFF);
         clock.setTextSize(clockSp);
         clock.setTypeface(Ui.outfit(c));
-        clock.setFontVariationSettings("'wght' 200");
+        Ui.weigh(clock, 200);
         clock.setLetterSpacing(-0.04f);
         clock.setIncludeFontPadding(false);
         row.addView(clock);
@@ -121,7 +121,7 @@ final class DreamScene {
             ampm.setTextColor(0x99FFFFFF);
             ampm.setTextSize(clockSp * 0.18f);
             ampm.setTypeface(Ui.outfit(c));
-            ampm.setFontVariationSettings("'wght' 500");
+            Ui.weigh(ampm, 500);
             ampm.setAllCaps(true);
             LinearLayout.LayoutParams ap = Ui.lp(-2, -2);
             ap.leftMargin = Ui.dp(c, 10);
@@ -136,7 +136,7 @@ final class DreamScene {
             date.setTextColor(0x8CFFFFFF);
             date.setTextSize(Math.max(14, clockSp * 0.15f));
             date.setTypeface(Ui.outfit(c));
-            date.setFontVariationSettings("'wght' 400");
+            Ui.weigh(date, 400);
             date.setLetterSpacing(0.14f);
             date.setAllCaps(true);
             content.addView(date, Ui.lpTop(c, -2, -2, 4));

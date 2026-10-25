@@ -185,7 +185,7 @@ public class MillsSettingsActivity extends Screen {
 
     /** Commit happened: re-render (keeping focus), and recreate if the theme itself changed. */
     private void committed(String tag) {
-        if (ThemeManager.isLight(this) != t.light) {
+        if (ThemeManager.isLight(this) != t.light || (Prefs.look(this) == Prefs.LOOK_GLASS) != t.glassLook) {
             Intent i = getIntent();
             i.putExtra(EXTRA_TAB, page);
             i.putExtra(EXTRA_FOCUS, tag);
@@ -233,8 +233,10 @@ public class MillsSettingsActivity extends Screen {
         p.setOnClickListener(ok);
         p.setOnKeyListener((v, key, e) -> e.getAction() == KeyEvent.ACTION_DOWN
                 && (key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_DPAD_RIGHT));   // no wrap, no sideways jumps
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, Ui.dp(this, 36));
-        lp.bottomMargin = Ui.dp(this, 3);
+        // Glass: each row its own frosted pill, a little taller and apart (the Lumen settings list)
+        if (t.glassLook) p.setPadding(Ui.dp(this, 18), 0, Ui.dp(this, 16), 0);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, Ui.dp(this, t.glassLook ? 40 : 36));
+        lp.bottomMargin = Ui.dp(this, t.glassLook ? 7 : 3);
         left.addView(p, lp);
         return p;
     }
@@ -355,7 +357,7 @@ public class MillsSettingsActivity extends Screen {
         setCrumb("HOME", "SETTINGS");
         heading("Settings", "Changes apply with OK and show on the right as they land.");
         String mode = ThemeManager.mode(this) == ThemeManager.AUTO ? "Auto" : ThemeManager.mode(this) == ThemeManager.LIGHT ? "Light" : "Dark";
-        cat("background", "Background", Wallpapers.label(Prefs.wallpaper(this)) + " · " + mode);
+        cat("background", "Background", Wallpapers.label(Prefs.wallpaper(this)) + " · " + (Prefs.look(this) == Prefs.LOOK_GLASS ? "Glass" : "Classic") + " · " + mode);
         int tr = Prefs.transparency(this);
         cat("glass", "Transparency", tr + "% · " + glassName(tr));
         cat("layout", "Layout", (Prefs.theater(this) ? "Theater · " : "") + (Prefs.arrangement(this) == Prefs.ARRANGE_LIST ? "List" : "Dock") + " · "
@@ -427,6 +429,10 @@ public class MillsSettingsActivity extends Screen {
         boolean hasLight = Wallpapers.hasLight(cur);
         String noLight = hasLight ? null : "no light version for " + Wallpapers.label(cur);
         String autoSum = "follows sunset · now " + (ThemeManager.isLight(this) ? "Light" : "Dark");
+        options("look", "LOOK", new String[]{"Glass", "Classic"},
+                new String[]{"frosted cards · white focus · Daylight by day, Night after dark with Auto", "dark panels · gold ring"}, null,
+                () -> Prefs.look(this) == Prefs.LOOK_GLASS ? 0 : 1,
+                v -> Prefs.setLook(this, v == 0 ? Prefs.LOOK_GLASS : Prefs.LOOK_CLASSIC));
         int m = ThemeManager.mode(this);
         options("mode", "MODE", new String[]{"Dark", "Light", "Auto"},
                 new String[]{null, null, autoSum}, new String[]{null, noLight, null},

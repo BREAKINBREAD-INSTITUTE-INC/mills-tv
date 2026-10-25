@@ -85,12 +85,13 @@ public class AgentActivity extends Screen {
         GridLayout facts = new GridLayout(this);
         facts.setColumnCount(3);
         // Only what is true of this agent: its machine, the model that serves it (its own model key on
-        // the hub, never the dashboard host's load or Ollama list), that model server's check, cloud.
+        // the hub, never the dashboard host's load or Ollama list), that model server's check, and the
+        // hub's own words for cloud use (D-52: hybrid; local now, cloud for safe work once the gateway is built).
         fact(facts, "MACHINE", a == null ? "—" : !a.machineLabel.isEmpty() ? a.machineLabel : MissionControlActivity.hostLabel(a.host));
         fact(facts, "SERVED BY", a == null || a.servedBy.isEmpty() ? "—" : a.servedBy);
         fact(facts, "MODEL SERVER", a == null || a.servedWhy.isEmpty() ? "not checked" : a.servedWhy);
         fact(facts, "LAST UPDATE", m.at > 0 ? Live.ago(m.at) : "never");
-        fact(facts, "CLOUD", a != null && "off".equals(a.cloud) ? "Local only (off by design)" : "not reported");
+        fact(facts, "MODELS", a == null || a.cloud.isEmpty() ? "not reported" : a.cloud);
         fact(facts, "USAGE TODAY", "not reported");
         hero.addView(facts, Ui.lpTop(this, -2, -2, 10));
 
@@ -159,6 +160,10 @@ public class AgentActivity extends Screen {
             TextView d = Ui.text(this, a.detail, 10, t.text, 500);
             d.setLineSpacing(0, 1.2f);
             health.addView(d, Ui.lpTop(this, -1, -2, 2));
+        }
+        if (a != null && !a.cloudWhy.isEmpty()) {   // the hybrid rule in full (the fact above is its short form)
+            health.addView(Ui.text(this, "Routing", 10, t.dim, 300), Ui.lpTop(this, -1, -2, 8));
+            health.addView(Ui.text(this, a.cloudWhy, 10, t.text, 500), Ui.lpTop(this, -1, -2, 2));
         }
         healthRow(health, "Model server", a == null || a.servedWhy.isEmpty() ? "not checked" : a.servedWhy,
                 fresh && a != null && Ui.Status.OK.equals(a.servedState));

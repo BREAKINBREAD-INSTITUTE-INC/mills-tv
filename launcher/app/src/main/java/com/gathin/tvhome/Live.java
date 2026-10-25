@@ -51,7 +51,7 @@ final class Live {
         String reviewWord = "", detail = "";
         /** What serves it, from its own model key (never the dashboard host): "gpt-oss-120b · CORE
          *  (stand-in DYNAMO)", that machine's check (ok/warn/bad/idle) and words, its machine, cloud. */
-        String servedBy = "", servedState = "", servedWhy = "", machineLabel = "", cloud = "";
+        String servedBy = "", servedState = "", servedWhy = "", machineLabel = "", cloud = "", cloudWhy = "";
         String shown() { return label.isEmpty() ? name : label; }
         /** One of up / ready / waiting / partial / down / not built, for the team counts. */
         String kind() {
@@ -69,7 +69,7 @@ final class Live {
             c.name = name; c.status = status; c.note = note; c.host = host; c.checked = checked; c.why = why;
             c.label = label; c.defaultLabel = defaultLabel; c.defaultNote = defaultNote;
             c.reviewWord = reviewWord; c.detail = detail;
-            c.servedBy = servedBy; c.servedState = servedState; c.servedWhy = servedWhy; c.machineLabel = machineLabel; c.cloud = cloud;
+            c.servedBy = servedBy; c.servedState = servedState; c.servedWhy = servedWhy; c.machineLabel = machineLabel; c.cloud = cloud; c.cloudWhy = cloudWhy;
             return c;
         }
         /** Checked by the hub (ok/warn/bad/idle) and its plain words; empty from an older hub. */
@@ -245,6 +245,7 @@ final class Live {
                         ag.servedWhy = j.optString("served_why", "");
                         ag.machineLabel = j.isNull("machine_label") ? "" : j.optString("machine_label", "");
                         ag.cloud = j.optString("cloud", "");
+                        ag.cloudWhy = j.optString("cloud_why", "");
                         ag.defaultLabel = j.optString("default_label", ag.name);
                         ag.defaultNote = j.optString("default_note", ag.note);
                         m.agents.add(ag);

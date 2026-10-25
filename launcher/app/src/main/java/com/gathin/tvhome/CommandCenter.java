@@ -97,6 +97,12 @@ final class CommandCenter {
         refresh();
     }
 
+    /** The hub's short word for cloud use ("Hybrid · local now"), from the first agent that has one. */
+    private static String cloudLine(Live.Mission m) {
+        for (Live.Agent a : m.agents) if (!a.cloud.isEmpty()) return a.cloud;
+        return "—";
+    }
+
     /** Fill the cards from the latest readings (cheap; network data comes from Live's cache). */
     void refresh() {
         if (t == null) return;
@@ -126,7 +132,7 @@ final class CommandCenter {
                 !mc ? "Not connected" : down > 0 ? down + " down" : part > 0 ? "Not 100% · " + Live.ago(m.at) : wait > 0 ? "Waiting on you · " + Live.ago(m.at) : "Connected · " + Live.ago(m.at),
                 new String[][]{
                         {"Model servers", mc && sparks > 0 ? serving + " of " + sparks + " up" : "—", ""},
-                        {"Cloud", "off by design", ""}});
+                        {"Models", cloudLine(m), ""}});
 
         Live.Weather w = Live.weather();
         Live.House h = Live.house();

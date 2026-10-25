@@ -84,11 +84,13 @@ public class AgentActivity extends Screen {
         // facts, 3 across
         GridLayout facts = new GridLayout(this);
         facts.setColumnCount(3);
-        fact(facts, "MACHINE", a != null ? MissionControlActivity.hostLabel(a.host) : "—");
-        fact(facts, "SERVED BY", m.host.isEmpty() ? "—" : m.host + " · " + (m.models >= 0 ? m.models + " models" : "models —"));
-        fact(facts, "HUB UPTIME", m.uptime.isEmpty() ? "—" : m.uptime);
+        // Only what is true of this agent: its machine, the model that serves it (its own model key on
+        // the hub, never the dashboard host's load or Ollama list), that model server's check, cloud.
+        fact(facts, "MACHINE", a == null ? "—" : !a.machineLabel.isEmpty() ? a.machineLabel : MissionControlActivity.hostLabel(a.host));
+        fact(facts, "SERVED BY", a == null || a.servedBy.isEmpty() ? "—" : a.servedBy);
+        fact(facts, "MODEL SERVER", a == null || a.servedWhy.isEmpty() ? "not checked" : a.servedWhy);
         fact(facts, "LAST UPDATE", m.at > 0 ? Live.ago(m.at) : "never");
-        fact(facts, "HUB LOAD", m.loadPct >= 0 ? m.loadPct + "%" : "—");
+        fact(facts, "CLOUD", a != null && "off".equals(a.cloud) ? "Local only (off by design)" : "not reported");
         fact(facts, "USAGE TODAY", "not reported");
         hero.addView(facts, Ui.lpTop(this, -2, -2, 10));
 
@@ -132,11 +134,9 @@ public class AgentActivity extends Screen {
 
         note = Ui.text(this, controls
                 ? "Pause and Restart ask for a second OK."
-                : "Approve, Pause, Restart and logs fire nothing yet: Hub doesn't serve the control API "
-                  + "(it answers 501). Approvals happen on your phone."
-                  + (browser ? " Open full Mission Control works." : " There's no web browser on this TV, so open "
-                  + Prefs.hub(this) + ":8777 on your phone or computer for the full dashboard."),
-                9, (t.dim & 0x00FFFFFF) | 0xBF000000, 300);
+                : "These controls send nothing yet (Hub's control API answers 501); approvals happen on your phone."
+                  + (browser ? "" : " No browser on this TV: open " + Prefs.hub(this) + ":8777 on your phone."),
+                9, t.light ? 0xE60B0F14 : 0xBF9AA6B2, 300);   // dark on Daylight: the dim grey sank into the photo
         note.setMaxWidth(Ui.dp(this, 500));
         note.setLineSpacing(0, 1.3f);
         hero.addView(note, Ui.lpTop(this, -2, -2, 10));
@@ -154,9 +154,14 @@ public class AgentActivity extends Screen {
         // the hub's reason in the hub's colour: green up, orange not 100%, red down, grey not built
         health.addView(Ui.kv(this, t, "Reported state", a != null ? a.label() : "not listed",
                 fresh && a != null ? t.stateText(a.state()) : t.dim, 10), Ui.lpTop(this, -1, -2, 8));
-        if (a != null && !a.detail.isEmpty())   // the latest tests, from agents.json on the hub
-            health.addView(Ui.kv(this, t, "Latest tests", a.detail, t.text, 10), Ui.lpTop(this, -1, -2, 8));
-        healthRow(health, "Model server", m.models > 0 ? m.models + " models on " + m.host : "—", fresh && m.models > 0);
+        if (a != null && !a.detail.isEmpty()) {   // the latest tests, from agents.json on the hub, whole
+            health.addView(Ui.text(this, "Latest tests", 10, t.dim, 300), Ui.lpTop(this, -1, -2, 8));
+            TextView d = Ui.text(this, a.detail, 10, t.text, 500);
+            d.setLineSpacing(0, 1.2f);
+            health.addView(d, Ui.lpTop(this, -1, -2, 2));
+        }
+        healthRow(health, "Model server", a == null || a.servedWhy.isEmpty() ? "not checked" : a.servedWhy,
+                fresh && a != null && Ui.Status.OK.equals(a.servedState));
         healthRow(health, "Agent controls", controls ? "available" : "not available (501)", controls);
         side.addView(health, Ui.lpTop(this, -1, -2, 12));
 
@@ -188,10 +193,14 @@ public class AgentActivity extends Screen {
         TextView kk = Ui.text(this, k, 7, t.dim, 600);
         kk.setLetterSpacing(0.16f);
         box.addView(kk);
-        box.addView(Ui.single(Ui.text(this, v, 12, t.text, 400)), Ui.lpTop(this, -2, -2, 3));
+        // two lines, never cut: "gpt-oss-120b · CORE (stand-in DYNAMO)" is longer than a column
+        TextView vv = Ui.text(this, v, 12, t.text, 400);
+        vv.setMaxLines(2);
+        vv.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        box.addView(vv, Ui.lpTop(this, -1, -2, 3));
         GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
-        lp.width = Ui.dp(this, 175);
-        lp.rightMargin = Ui.dp(this, 14);
+        lp.width = Ui.dp(this, 150);           // three across fit beside the side panels (hero is ~488dp)
+        lp.rightMargin = Ui.dp(this, 12);
         lp.bottomMargin = Ui.dp(this, 10);
         g.addView(box, lp);
     }

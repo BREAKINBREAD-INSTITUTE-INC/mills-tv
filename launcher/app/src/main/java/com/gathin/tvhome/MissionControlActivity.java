@@ -403,7 +403,7 @@ public class MissionControlActivity extends Screen {
         at.why.setText(a.label());
         at.why.setTextColor(fresh ? t.stateText(a.state()) : t.dim);
         at.role.setText(a.note);
-        at.host.setText(hostLabel(a.host));
+        at.host.setText(a.machineLabel.isEmpty() ? hostLabel(a.host) : a.machineLabel);
         if (at.age != null) at.age.setText(fresh ? "reported " + Live.ago(m.at) : "last reading " + Live.ago(m.at));
     }
 

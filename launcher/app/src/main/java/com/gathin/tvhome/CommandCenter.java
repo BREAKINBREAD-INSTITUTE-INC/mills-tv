@@ -97,28 +97,36 @@ final class CommandCenter {
         refresh();
     }
 
-    /** The team line without its leading "N up" (the card's big number already says it). */
-    private static String afterUp(String s) {
-        String r = s.replaceFirst("^\\d+ up( · )?", "");
-        return r.isEmpty() ? "all up" : r;
-    }
-
     /** Fill the cards from the latest readings (cheap; network data comes from Live's cache). */
     void refresh() {
         if (t == null) return;
         Live.Mission m = Live.mission();
         boolean mc = m.ok && !m.stale();
-        int up = m.countKind("up"), part = m.countKind("partial"), wait = m.countKind("waiting"), down = m.count(Ui.Status.BAD);
+        int part = m.countKind("partial"), wait = m.countKind("waiting"), down = m.count(Ui.Status.BAD);
         String team = m.teamState();
+        // the big number is the first non-zero kind (up, ready, waiting...), the line the rest of them
+        String lead = "", rest = "";
+        if (mc) {
+            for (String[] k : Live.Mission.KINDS) {
+                int c = m.countKind(k[1]);
+                if (c == 0 || Ui.Status.IDLE.equals(k[0])) continue;
+                if (lead.isEmpty()) lead = c + " " + k[1]; else rest += (rest.isEmpty() ? "" : " · ") + c + " " + k[1];
+            }
+            if (lead.isEmpty()) lead = "0 up";
+            if (rest.isEmpty()) rest = m.countKind("not built") + " not built";
+        }
+        // the model servers the agents use (the Sparks, checked by the hub), never the dashboard host's own load
+        int sparks = 0, serving = 0;
+        for (Live.Machine x : m.infra) if (!x.nas()) { sparks++; if (Ui.Status.OK.equals(x.state())) serving++; }
         fill(cards[0], "Mission Control",
-                mc ? up + " up" : m.at > 0 ? "Stale" : "—",
-                mc ? afterUp(m.summary(false)) 
+                mc ? lead : m.at > 0 ? "Stale" : "—",
+                mc ? rest 
                    : m.at > 0 ? "last answer " + Live.ago(m.at) : "Hub's status feed isn't answering",
                 team,
                 !mc ? "Not connected" : down > 0 ? down + " down" : part > 0 ? "Not 100% · " + Live.ago(m.at) : wait > 0 ? "Waiting on you · " + Live.ago(m.at) : "Connected · " + Live.ago(m.at),
                 new String[][]{
-                        {"Hub load", m.loadPct >= 0 ? m.loadPct + "%" : "—", ""},
-                        {"Models", m.models >= 0 ? m.models + " on " + (m.host.isEmpty() ? "Hub" : m.host) : "—", ""}});
+                        {"Model servers", mc && sparks > 0 ? serving + " of " + sparks + " up" : "—", ""},
+                        {"Cloud", "off by design", ""}});
 
         Live.Weather w = Live.weather();
         Live.House h = Live.house();

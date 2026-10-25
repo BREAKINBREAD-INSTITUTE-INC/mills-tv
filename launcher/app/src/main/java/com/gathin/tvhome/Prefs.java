@@ -128,11 +128,16 @@ final class Prefs {
     static boolean nameUnderFocus(Context c)            { return b(c, "focus_name", true); }
     static void setNameUnderFocus(Context c, boolean v) { put(c, "focus_name", v); }
 
-    /** Which page Home lands on (Settings > Layout > Home page): the calm home, or Theater. */
-    static final int HOME_CALM = 0, HOME_THEATER = 1;
+    /** Which page Home lands on (Settings > Layout > Home page): the calm home, Theater, or Clean
+     *  (JJ, Oct 25: the Lumen look, a photo, the time and one bar of app banners). Theater and
+     *  Clean are both drawn by TheaterActivity. */
+    static final int HOME_CALM = 0, HOME_THEATER = 1, HOME_CLEAN = 2;
     static int homePage(Context c)            { return i(c, "home_page", HOME_CALM); }
     static void setHomePage(Context c, int v) { put(c, "home_page", v); }
     static boolean theater(Context c)         { return homePage(c) == HOME_THEATER; }
+    static boolean clean(Context c)           { return homePage(c) == HOME_CLEAN; }
+    /** Home hands over to TheaterActivity (Theater or Clean). */
+    static boolean ownPage(Context c)         { return homePage(c) != HOME_CALM; }
 
     /** Large dock is 110dp, standard 88dp (blueprint B2). Large is not available with List. */
     /** Compact status strip on Home (the strip drafts): 0 off (calm home), 1 one line, 2 chips, 3 minimal. */

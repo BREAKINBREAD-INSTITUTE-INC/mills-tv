@@ -57,7 +57,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener, C
         layoutCheck = getIntent().getBooleanExtra(TheaterActivity.EXTRA_LAYOUT_CHECK, false);
         setContentView(R.layout.activity_main);
         // Theater home: never let the calm home paint first; onResume hands over (see toTheater).
-        if (Prefs.theater(this)) findViewById(R.id.root).setVisibility(View.INVISIBLE);
+        if (Prefs.ownPage(this)) findViewById(R.id.root).setVisibility(View.INVISIBLE);
         View root = findViewById(R.id.root);
         homeLayer = findViewById(R.id.homeLayer);
         clockGroup = findViewById(R.id.clockGroup);
@@ -114,7 +114,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener, C
      */
     private boolean toTheater() {
         View root = findViewById(R.id.root);
-        if (!Prefs.theater(this)) { root.setVisibility(View.VISIBLE); return false; }
+        if (!Prefs.ownPage(this)) { root.setVisibility(View.VISIBLE); return false; }
         root.setVisibility(View.INVISIBLE);
         rotateWallpaperIfDue();   // Background > Rotation applies to Theater too; it reads the pref on resume
         if (ccOpen) {   // no command center on Theater: put the cards away without the animation

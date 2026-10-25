@@ -306,7 +306,7 @@ public class MillsSettingsActivity extends Screen {
         String mode = ThemeManager.mode(this) == ThemeManager.AUTO ? "AUTO" : ThemeManager.mode(this) == ThemeManager.LIGHT ? "LIGHT" : "DARK";
         return Wallpapers.label(Prefs.wallpaper(this)).toUpperCase(Locale.US) + " · " + mode + " · "
                 + (Prefs.arrangement(this) == Prefs.ARRANGE_LIST ? "LIST" : "DOCK")
-                + (Prefs.theater(this) ? " · HOME IS THEATER" : "");
+                + (Prefs.theater(this) ? " · HOME IS THEATER" : Prefs.clean(this) ? " · HOME IS CLEAN" : "");
     }
 
     private LinearLayout pvLabel(String l, String r) {
@@ -360,7 +360,7 @@ public class MillsSettingsActivity extends Screen {
         cat("background", "Background", Wallpapers.label(Prefs.wallpaper(this)) + " · " + (Prefs.look(this) == Prefs.LOOK_GLASS ? "Glass" : "Classic") + " · " + mode);
         int tr = Prefs.transparency(this);
         cat("glass", "Transparency", tr + "% · " + glassName(tr));
-        cat("layout", "Layout", (Prefs.theater(this) ? "Theater · " : "") + (Prefs.arrangement(this) == Prefs.ARRANGE_LIST ? "List" : "Dock") + " · "
+        cat("layout", "Layout", (Prefs.theater(this) ? "Theater · " : Prefs.clean(this) ? "Clean · " : "") + (Prefs.arrangement(this) == Prefs.ARRANGE_LIST ? "List" : "Dock") + " · "
                 + new String[]{"icons", "names", "icons + names"}[Prefs.show(this)]);
         cat("typography", "Typography", "Outfit · " + (Prefs.largeType(this) ? "large" : "standard"));
         cat("focus", "Focus", new String[]{"Gold", "Teal", "White"}[Prefs.accent(this)] + " underline · scale "
@@ -576,8 +576,8 @@ public class MillsSettingsActivity extends Screen {
     private void pageLayout() {
         setCrumb("SETTINGS", "LAYOUT");
         heading("Layout", "How apps sit on the Home screen");
-        options("page", "HOME PAGE", new String[]{"Calm", "Theater"},
-                new String[]{"clock, status, one frosted dock", "tiles + Continue Watching"}, null,
+        options("page", "HOME PAGE", new String[]{"Calm", "Theater", "Clean"},
+                new String[]{"clock, status, one frosted dock", "tiles + Continue Watching", "the photo, the time, one bar of app banners"}, null,
                 () -> Prefs.homePage(this), v -> Prefs.setHomePage(this, v));
         group("CONTINUE WATCHING");
         int saved = Watched.count(this), shown = Watched.shown(this).size();

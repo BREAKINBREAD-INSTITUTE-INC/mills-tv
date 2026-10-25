@@ -154,6 +154,8 @@ public class AgentActivity extends Screen {
         // the hub's reason in the hub's colour: green up, orange not 100%, red down, grey not built
         health.addView(Ui.kv(this, t, "Reported state", a != null ? a.label() : "not listed",
                 fresh && a != null ? t.stateText(a.state()) : t.dim, 10), Ui.lpTop(this, -1, -2, 8));
+        if (a != null && !a.detail.isEmpty())   // the latest tests, from agents.json on the hub
+            health.addView(Ui.kv(this, t, "Latest tests", a.detail, t.text, 10), Ui.lpTop(this, -1, -2, 8));
         healthRow(health, "Model server", m.models > 0 ? m.models + " models on " + m.host : "—", fresh && m.models > 0);
         healthRow(health, "Agent controls", controls ? "available" : "not available (501)", controls);
         side.addView(health, Ui.lpTop(this, -1, -2, 12));

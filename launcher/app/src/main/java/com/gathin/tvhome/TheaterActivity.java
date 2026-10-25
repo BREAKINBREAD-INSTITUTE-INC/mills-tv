@@ -34,8 +34,20 @@ import java.util.List;
  * of frosted app tiles; and Continue Watching from the TV's own Watch Next rows when readable,
  * else from our own media-session history (Watched), or one honest dim line when it is empty. No command center here. Focus animates transforms
  * and alpha only; rows never wrap.
+ *
+ * Clean (Home page = Clean; JJ, Oct 25, after the Lumen tvOS-style home): the same page pared
+ * down. The photo with only a light scrim at the top, the date and time on one line with the
+ * weather under it, two round frosted buttons top-right (Quick menu, Settings), and one frosted
+ * bar at the bottom holding the dock apps as their own full-colour banners. The focused banner
+ * grows and its name shows under the bar. No Continue Watching, no status. MENU opens the Quick
+ * menu on either page.
+ *
+ * The command center works here as on the calm home (JJ, Oct 25): DOWN from the bottom row
+ * (Clean's app bar; Theater's Continue Watching, or its tiles when that row is empty) brings up
+ * the five cards (Mission Control, House, Cameras, Network, System). OK opens one, UP or BACK
+ * puts them away.
  */
-public class TheaterActivity extends Activity implements AppAdapter.TileListener {
+public class TheaterActivity extends Activity implements AppAdapter.TileListener, CommandCenter.Host {
 
     @Override protected void attachBaseContext(Context base) { super.attachBaseContext(ThemeManager.wrap(base)); }
 
@@ -59,11 +71,23 @@ public class TheaterActivity extends Activity implements AppAdapter.TileListener
     private static int lastTile = 0, lastCard = 0, lastMark = 1;
     private static final int ROW_TILES = 0, ROW_CARDS = 1, ROW_MARKS = 2;
     private static int focusRow = ROW_TILES;
+    /** Home page = Clean: see the class note. Fixed for this instance; a change recreates it. */
+    private boolean clean;
+    private TextView weatherLine;
+    private FrameLayout ccLayer;
+    private View ccDim;
+    private CommandCenter cc;
+    private boolean ccOpen;
+    private static int lastCcCard = 0;
+    private View clockBox;            // stays faintly visible behind the cards; the rest of the page fades out
+    private FrostLayout barGlass;     // Clean's bar: frosted with the tiles, kept across rebinds
+    private static final float BAN_W = 150, BAN_H = 86, BAN_GAP = 14, BAN_FOCUS = 1.10f;
 
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         t = Ui.T.of(this);
+        clean = Prefs.clean(this);
         focusRow = ROW_TILES;   // a fresh Theater (the Home button) lands on the tiles, like the calm home
         root = new FrameLayout(this);
         root.setClipChildren(false);
@@ -76,7 +100,8 @@ public class TheaterActivity extends Activity implements AppAdapter.TileListener
     protected void onResume() {
         super.onResume();
         // Settings changed the home page back to Calm: step down to the calm home underneath.
-        if (!Prefs.theater(this)) { finish(); overridePendingTransition(0, 0); return; }
+        if (!Prefs.ownPage(this)) { finish(); overridePendingTransition(0, 0); return; }
+        if (Prefs.clean(this) != clean) { marks.clear(); recreate(); return; }
         if (ThemeManager.isLight(this) != t.light || (Prefs.look(this) == Prefs.LOOK_GLASS) != t.glassLook) { recreate(); return; }
         if (!wallpaperKey().equals(drawnWallpaper)) bindWallpaper();
         View aur = root.findViewWithTag("aurora");
@@ -86,9 +111,10 @@ public class TheaterActivity extends Activity implements AppAdapter.TileListener
         styleClock();
         bindTiles();
         bindMarks();
-        loadWatchNext();
+        if (!clean) loadWatchNext();
         main.removeCallbacks(netTick);
         main.postDelayed(netTick, 15_000L);
+        refreshCc();   // warm for the command center (and on return from a view it opened)
         doorbell.start(t);
         // The window would hand focus to the first mark on its own; hold it until restoreFocus.
         root.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
@@ -103,19 +129,32 @@ public class TheaterActivity extends Activity implements AppAdapter.TileListener
         View vid = root.findViewWithTag("video");
         if (vid instanceof VideoBackdrop) ((VideoBackdrop) vid).setPaused(true);
         main.removeCallbacks(netTick);
+        main.removeCallbacks(ccTick);
         doorbell.stop();
     }
 
-    /** Home: Back goes nowhere. */
-    @Override public void onBackPressed() {}
+    /** Home: Back goes nowhere, except to put the command center away. */
+    @Override public void onBackPressed() { if (ccOpen) close(); }
+
+    /** MENU opens the Quick menu, as on the calm home. */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent e) {
+        if (e.getKeyCode() == KeyEvent.KEYCODE_MENU) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) open(new Intent(this, QuickMenuActivity.class));
+            return true;
+        }
+        return super.dispatchKeyEvent(e);
+    }
 
     // ---- frame -----------------------------------------------------------------------------------
 
     private void build() {
         // gentle scrim: clear for the top half, then down to ~78% black at the bottom edge
         View scrim = new View(this);
-        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{0x00000000, 0x00000000, 0x1F000000, 0x80000000, 0xC7000000});
+        // Clean keeps the photo clear: only a light shade behind the time, none at the bottom
+        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, clean
+                ? (t.light ? new int[]{0x40FFFFFF, 0x00FFFFFF, 0x00000000, 0x00000000} : new int[]{0x4D000000, 0x00000000, 0x00000000, 0x1F000000})
+                : new int[]{0x00000000, 0x00000000, 0x1F000000, 0x80000000, 0xC7000000});
         scrim.setBackground(g);
         root.addView(scrim, new FrameLayout.LayoutParams(-1, -1));
 
@@ -131,7 +170,13 @@ public class TheaterActivity extends Activity implements AppAdapter.TileListener
         date.setFormat12Hour("EEE d MMM");
         date.setFormat24Hour("EEE d MMM");
         clockGroup.addView(date, Ui.lpTop(this, -2, -2, 6));
+        if (clean) {   // "Sun Oct 25  11:20 AM" on one line, the weather under it
+            clock.setVisibility(View.GONE);
+            weatherLine = Ui.single(Ui.text(this, "", 13, t.text, 400));
+            clockGroup.addView(weatherLine, Ui.lpTop(this, -2, -2, 6));
+        }
         root.addView(clockGroup, Ui.at(this, Gravity.TOP | Gravity.START, Ui.MARGIN, Ui.MARGIN_TOP, 0, 0));
+        clockBox = clockGroup;
 
         corner = Ui.hbox(this);
         corner.setGravity(Gravity.CENTER_VERTICAL);
@@ -141,10 +186,33 @@ public class TheaterActivity extends Activity implements AppAdapter.TileListener
         // middle: one row of frosted tiles; the name appears under the focused one only
         tileScroll = row();
         tileRow = (LinearLayout) tileScroll.getChildAt(0);
-        FrameLayout.LayoutParams tp = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
-        tp.topMargin = Ui.dp(this, 168);
-        root.addView(tileScroll, tp);
         tileScroll.setOnScrollChangeListener((v, x, y, ox, oy) -> { for (FrostLayout f : glass) f.refreshSource(); });
+        if (clean) {
+            // Clean: the banners sit in one frosted bar near the bottom; names show under the bar
+            FrameLayout bar = new FrameLayout(this);
+            bar.setClipChildren(true);    // the parent clips: banners scrolled past the bar's ends stay inside it
+            barGlass = new FrostLayout(this);
+            barGlass.setRadius(Ui.dp(this, 26));
+            barGlass.setGlass(t.light, Math.max(0.14f, Wallpapers.get(Prefs.wallpaper(this)).dockAlpha * 1.8f), t.opacity);
+            bar.addView(barGlass, new FrameLayout.LayoutParams(-1, Ui.dp(this, BAN_H + 24), Gravity.TOP));
+            glass.add(barGlass);
+            View edge = new View(this);
+            edge.setBackground(Ui.round(this, 0, 26, t.light ? 0xB3FFFFFF : 0x40FFFFFF));
+            bar.addView(edge, new FrameLayout.LayoutParams(-1, Ui.dp(this, BAN_H + 24), Gravity.TOP));
+            tileRow.setPadding(Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 14), 0);
+            tileScroll.setHorizontalFadingEdgeEnabled(false);
+            FrameLayout.LayoutParams sp = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
+            bar.addView(tileScroll, sp);
+            // the bar wraps the row: the glass is the top BAN_H + 24, the focused name sits under it
+            FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+            bl.leftMargin = bl.rightMargin = Ui.dp(this, Ui.MARGIN);
+            bl.bottomMargin = Ui.dp(this, 24);
+            root.addView(bar, bl);
+        } else {
+            FrameLayout.LayoutParams tp = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
+            tp.topMargin = Ui.dp(this, 168);
+            root.addView(tileScroll, tp);
+        }
 
         // bottom: Continue Watching
         LinearLayout bottom = Ui.vbox(this);
@@ -163,9 +231,105 @@ public class TheaterActivity extends Activity implements AppAdapter.TileListener
         cwLine.setVisibility(View.GONE);
         FrameLayout.LayoutParams bp = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
         bp.bottomMargin = Ui.dp(this, 34);
-        root.addView(bottom, bp);
+        if (!clean) root.addView(bottom, bp);
 
         apps = new AppAdapter(this, this, 6, true);
+
+        // the command center, over everything, hidden until DOWN from the bottom row
+        ccDim = new View(this);
+        ccDim.setBackgroundColor(t.light ? 0xA6E8EEF4 : 0xAD060C12);   // 68% dim, as on the calm home
+        ccDim.setVisibility(View.GONE);
+        root.addView(ccDim, new FrameLayout.LayoutParams(-1, -1));
+        ccLayer = new FrameLayout(this);
+        ccLayer.setClipChildren(false);
+        ccLayer.setVisibility(View.GONE);
+        root.addView(ccLayer, new FrameLayout.LayoutParams(-1, -1));
+        cc = new CommandCenter(this, ccLayer, this);
+    }
+
+    // ---- command center ----------------------------------------------------------------------------
+
+    /** DOWN from the bottom row: the five cards rise over a dim, the page behind takes no focus. */
+    private void openCc() {
+        if (ccOpen) return;
+        ccOpen = true;
+        cc.build(t);
+        refreshCc();
+        pageFocus(false);
+        ccDim.setAlpha(0f);
+        ccDim.setVisibility(View.VISIBLE);
+        ccLayer.setVisibility(View.VISIBLE);
+        focusCc(lastCcCard);
+        ccLayer.post(() -> {
+            float rise = cc.panel.getHeight() + Ui.dp(this, 54);
+            cc.panel.setTranslationY(rise);
+            cc.panel.setAlpha(0f);
+            long ms = Motion.ms(this, 320);
+            fadePage(true, ms);
+            ccDim.animate().alpha(1f).setDuration(ms).start();
+            cc.panel.animate().translationY(0f).alpha(1f).setDuration(ms).setInterpolator(Motion.FAST_OUT_SLOW_IN).start();
+        });
+    }
+
+    @Override
+    public void close() {
+        if (!ccOpen) return;
+        ccOpen = false;
+        pageFocus(true);
+        long ms = Motion.ms(this, 240);
+        float rise = cc.panel.getHeight() + Ui.dp(this, 54);
+        fadePage(false, ms);
+        ccDim.animate().alpha(0f).setDuration(ms).start();
+        cc.panel.animate().translationY(rise).alpha(0f).setDuration(ms).setInterpolator(Motion.FAST_OUT_SLOW_IN)
+                .withEndAction(() -> { if (!ccOpen) { ccLayer.setVisibility(View.GONE); ccDim.setVisibility(View.GONE); } }).start();
+        if (focusRow == ROW_CARDS && !cards.isEmpty()) focusCard(lastCard); else focusTile(lastTile);
+    }
+
+    /** This page doesn't keep the hub's readings warm like the calm home does: fetch them for the cards. */
+    private final Runnable ccTick = new Runnable() {
+        @Override public void run() { refreshCc(); main.postDelayed(this, 30_000L); }
+    };
+
+    private void refreshCc() {
+        final Context app = getApplicationContext();
+        new Thread(() -> {
+            Live.fetchWeatherBlocking(app);
+            Live.fetchHouseBlocking(app);
+            Live.fetchCamsBlocking(app);
+            main.post(() -> {
+                if (clean && !isFinishing()) styleClock();   // the weather line, now that there's a reading
+                Live.fetchMission(app, m -> { if (ccOpen && !isFinishing()) cc.refresh(); });
+            });
+        }, "mills-cc").start();
+        main.removeCallbacks(ccTick);
+        if (ccOpen) main.postDelayed(ccTick, 30_000L);
+    }
+
+    /** As on the calm home: the page under the cards fades away (the clock to 55%), the photo stays. */
+    private void fadePage(boolean out, long ms) {
+        for (int i = 0; i < root.getChildCount(); i++) {
+            View v = root.getChildAt(i);
+            if (v == ccLayer || v == ccDim || "aurora".equals(v.getTag()) || "video".equals(v.getTag())) continue;
+            v.animate().alpha(out ? (v == clockBox ? 0.55f : 0f) : 1f).setDuration(ms).start();
+        }
+    }
+
+    /** While the cards are up nothing behind them may take focus. */
+    private void pageFocus(boolean on) {
+        for (int i = 0; i < root.getChildCount(); i++) {
+            View v = root.getChildAt(i);
+            if (v == ccLayer || !(v instanceof ViewGroup)) continue;
+            ((ViewGroup) v).setDescendantFocusability(on ? ViewGroup.FOCUS_AFTER_DESCENDANTS : ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+        }
+    }
+
+    private void focusCc(int i) {
+        int idx = Math.max(0, Math.min(cc.cards.length - 1, i));
+        for (int k = 0; k < cc.cards.length; k++) {
+            final int n = k;
+            cc.cards[k].onFocus((p, has) -> { if (has) lastCcCard = n; });
+        }
+        cc.cards[idx].requestFocus();
     }
 
     /** A horizontal row that scrolls to keep focus in view, padded to the safe margins. */
@@ -235,6 +399,20 @@ public class TheaterActivity extends Activity implements AppAdapter.TileListener
         Ui.weigh(date, 300);
         date.setTextSize(large ? 17 : 15);
         date.setVisibility(Prefs.showDate(this) ? View.VISIBLE : View.GONE);
+        if (clean) {
+            String cf = Prefs.clock24h(this) ? "EEE MMM d  H:mm" : "EEE MMM d  h:mm a";
+            date.setFormat12Hour(cf);
+            date.setFormat24Hour(cf);
+            date.setVisibility(View.VISIBLE);
+            date.setTextColor(t.text);
+            Ui.weigh(date, 500);
+            date.setTextSize(large ? 20 : 18);
+            if (!t.light) date.setShadowLayer(8, 0, 1, 0x66000000);
+            Live.Weather w = Live.weather();
+            weatherLine.setText(w.has() ? w.tempF + "° " + w.sky() : "");
+            weatherLine.setTextColor(t.light ? 0xCC0B0F14 : 0xD9F2F4F7);
+            if (!t.light) weatherLine.setShadowLayer(8, 0, 1, 0x66000000);
+        }
     }
 
     // ---- top-right marks -------------------------------------------------------------------------
@@ -246,6 +424,7 @@ public class TheaterActivity extends Activity implements AppAdapter.TileListener
     private int markInk() { return t.light ? 0xE60B0F14 : 0xF2FFFFFF; }
 
     private void bindMarks() {
+        if (clean) { bindCleanMarks(); return; }
         if (!marks.isEmpty()) { bindNetMark(); return; }
         int ink = markInk();
         int px = Ui.dp(this, 20);
@@ -298,8 +477,61 @@ public class TheaterActivity extends Activity implements AppAdapter.TileListener
     }
 
     /** Live from Live.net: Wi-Fi, Ethernet, or the faded struck-through mark when offline. */
+    /** Clean: two round frosted buttons, Quick menu and Settings; focus turns one solid white. */
+    private void bindCleanMarks() {
+        if (!marks.isEmpty()) return;
+        int ink = markInk(), dark = 0xFF0B0F14;
+        int[] icons = {R.drawable.ic_sliders, R.drawable.ic_gear};
+        String[] names = {"Quick menu", getString(R.string.settings)};
+        View.OnClickListener[] ok = {v -> open(new Intent(this, QuickMenuActivity.class)), v -> openSettings("overview")};
+        for (int i = 0; i < icons.length; i++) {
+            final int idx = i;
+            FrameLayout m = new FrameLayout(this);
+            m.setFocusable(true);
+            m.setClickable(true);
+            m.setContentDescription(names[i]);
+            View rest = new View(this), on = new View(this);
+            GradientDrawable a = new GradientDrawable(), b = new GradientDrawable();
+            a.setShape(GradientDrawable.OVAL);
+            a.setColor(t.light ? 0x8CFFFFFF : 0x38FFFFFF);
+            a.setStroke(Math.max(1, Ui.dp(this, 0.5f)), t.light ? 0xD9FFFFFF : 0x4DFFFFFF);
+            b.setShape(GradientDrawable.OVAL);
+            b.setColor(0xFFFFFFFF);
+            rest.setBackground(a);
+            on.setBackground(b);
+            on.setAlpha(0f);
+            m.addView(rest, new FrameLayout.LayoutParams(-1, -1));
+            m.addView(on, new FrameLayout.LayoutParams(-1, -1));
+            ImageView iv = new ImageView(this);
+            iv.setImageResource(icons[i]);
+            iv.setColorFilter(ink);
+            int px = Ui.dp(this, 20);
+            m.addView(iv, new FrameLayout.LayoutParams(px, px, Gravity.CENTER));
+            m.setOnClickListener(ok[i]);
+            m.setOnFocusChangeListener((v, has) -> {
+                on.animate().alpha(has ? 1f : 0f).setDuration(Motion.ms(this, 160)).start();
+                iv.setColorFilter(has ? dark : ink);
+                focusScale(v, has, 1.08f);
+                if (has) { lastMark = idx; focusRow = ROW_MARKS; }
+            });
+            m.setOnKeyListener((v, key, e) -> {
+                if (e.getAction() != KeyEvent.ACTION_DOWN) return false;
+                if (key == KeyEvent.KEYCODE_DPAD_DOWN) { focusTile(lastTile); return true; }
+                if (key == KeyEvent.KEYCODE_DPAD_UP) return true;
+                if (key == KeyEvent.KEYCODE_DPAD_LEFT && idx == 0) return true;
+                if (key == KeyEvent.KEYCODE_DPAD_RIGHT && idx == icons.length - 1) return true;
+                return false;
+            });
+            int s = Ui.dp(this, 44);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(s, s);
+            lp.leftMargin = i == 0 ? 0 : Ui.dp(this, 12);
+            corner.addView(m, lp);
+            marks.add(m);
+        }
+    }
+
     private void bindNetMark() {
-        if (marks.isEmpty()) return;
+        if (marks.isEmpty() || clean) return;
         Live.Net n = Live.net(this);
         Glyphs.Corner k = n.ethernet ? Glyphs.Corner.ETHERNET : n.wifi && n.online ? Glyphs.Corner.WIFI : Glyphs.Corner.WIFI_OFF;
         FrameLayout m = (FrameLayout) marks.get(0);
@@ -319,6 +551,7 @@ public class TheaterActivity extends Activity implements AppAdapter.TileListener
         apps.reload();
         tileRow.removeAllViews();
         tiles.clear(); names.clear(); glass.clear();
+        if (barGlass != null) glass.add(barGlass);
         Wallpapers.Wp meta = Wallpapers.get(Prefs.wallpaper(this));
         int n = apps.getItemCount();
         for (int i = 0; i < n; i++) {
@@ -332,6 +565,7 @@ public class TheaterActivity extends Activity implements AppAdapter.TileListener
             tile.setFocusable(true);
             tile.setClickable(true);
             tile.setContentDescription(e.label);
+            if (clean) { cleanTile(col, tile, e, idx, n); continue; }
             final float r = Ui.dp(this, 16);
             tile.setOutlineProvider(new ViewOutlineProvider() {
                 @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
@@ -371,7 +605,7 @@ public class TheaterActivity extends Activity implements AppAdapter.TileListener
             tile.setOnKeyListener((v, key, ev) -> {
                 if (ev.getAction() != KeyEvent.ACTION_DOWN) return false;
                 if (key == KeyEvent.KEYCODE_DPAD_UP) { focusMark(lastMark); return true; }
-                if (key == KeyEvent.KEYCODE_DPAD_DOWN) { if (!cards.isEmpty()) focusCard(lastCard); return true; }
+                if (key == KeyEvent.KEYCODE_DPAD_DOWN) { if (!cards.isEmpty()) focusCard(lastCard); else openCc(); return true; }
                 if (key == KeyEvent.KEYCODE_DPAD_LEFT && idx == 0) return true;             // never wrap
                 if (key == KeyEvent.KEYCODE_DPAD_RIGHT && idx == n - 1) return true;
                 return false;
@@ -382,6 +616,69 @@ public class TheaterActivity extends Activity implements AppAdapter.TileListener
             tiles.add(tile);
         }
         FrostMaker.get(this, Prefs.wallpaper(this), t.light, b -> { for (FrostLayout f : glass) f.setFrost(b); });
+    }
+
+    /** Clean: the app's own banner fills a rounded 16:9 tile (frosted glyph when it has none). */
+    private void cleanTile(LinearLayout col, FrameLayout tile, AppAdapter.Entry e, int idx, int n) {
+        final float r = Ui.dp(this, 14);
+        tile.setOutlineProvider(new ViewOutlineProvider() {
+            @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
+        });
+        tile.setClipToOutline(true);
+        if (e.banner != null) {
+            tile.setBackgroundColor(0xFF0B0F14);
+            ImageView ban = new ImageView(this);
+            ban.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            ban.setImageDrawable(e.banner);
+            tile.addView(ban, new FrameLayout.LayoutParams(-1, -1));
+        } else {
+            tile.setBackground(Ui.round(this, t.light ? 0x8CFFFFFF : 0x2EFFFFFF, 14, 0));
+            ImageView iv = new ImageView(this);
+            iv.setImageDrawable(Glyphs.forApp(this, e.label, e.pkg, 0.9f, t.text, t.light ? 0xE6FFFFFF : 0xD90B0F14));
+            tile.addView(iv, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
+        }
+        View ring = new View(this);   // a thin white edge while focused, over the banner
+        ring.setBackground(Ui.round(this, 0, 14, 0xF2FFFFFF));
+        ring.setAlpha(0f);
+        tile.addView(ring, new FrameLayout.LayoutParams(-1, -1));
+        col.addView(tile, new LinearLayout.LayoutParams(Ui.dp(this, BAN_W), Ui.dp(this, BAN_H)));
+
+        TextView name = Ui.single(Ui.text(this, e.label, 13, t.text, 500));
+        name.setGravity(Gravity.CENTER);
+        name.setMaxWidth(Ui.dp(this, BAN_W + BAN_GAP));
+        name.setAlpha(0f);
+        if (!t.light) name.setShadowLayer(8, 0, 1, 0x99000000);
+        col.addView(name, Ui.lpTop(this, -2, -2, 20));   // under the bar's glass, not on it
+        names.add(name);
+
+        tile.setOnClickListener(v -> apps.launch(apps.entryAt(idx)));
+        tile.setOnFocusChangeListener((v, has) -> {
+            focusScale(v, has, BAN_FOCUS);
+            v.setElevation(has ? Ui.dp(this, 6) : 0);
+            ring.animate().alpha(has ? 1f : 0f).setDuration(Motion.ms(this, 180)).start();
+            if (!has) clearError(idx);
+            name.animate().alpha(has ? 1f : 0f).setDuration(Motion.ms(this, 180)).start();
+            if (has) { lastTile = idx; focusRow = ROW_TILES; tileScroll.post(() -> keepInBar(col)); }
+        });
+        tile.setOnKeyListener((v, key, ev) -> {
+            if (ev.getAction() != KeyEvent.ACTION_DOWN) return false;
+            if (key == KeyEvent.KEYCODE_DPAD_UP) { focusMark(lastMark); return true; }
+            if (key == KeyEvent.KEYCODE_DPAD_DOWN) { openCc(); return true; }
+            if (key == KeyEvent.KEYCODE_DPAD_LEFT && idx == 0) return true;             // never wrap
+            if (key == KeyEvent.KEYCODE_DPAD_RIGHT && idx == n - 1) return true;
+            return false;
+        });
+        LinearLayout.LayoutParams lp = Ui.lp(-2, -2);
+        lp.leftMargin = idx == 0 ? 0 : Ui.dp(this, BAN_GAP);
+        tileRow.addView(col, lp);
+        tiles.add(tile);
+    }
+
+    /** Scroll the bar so the focused banner (grown 1.10) keeps a little room at either end. */
+    private void keepInBar(View col) {
+        int room = Ui.dp(this, 24), x = tileScroll.getScrollX(), w = tileScroll.getWidth();
+        if (col.getRight() + room > x + w) tileScroll.smoothScrollTo(col.getRight() + room - w, 0);
+        else if (col.getLeft() - room < x) tileScroll.smoothScrollTo(Math.max(0, col.getLeft() - room), 0);
     }
 
     private void focusScale(View v, boolean has, float to) {
@@ -533,7 +830,7 @@ public class TheaterActivity extends Activity implements AppAdapter.TileListener
             card.setOnKeyListener((v, key, ev) -> {
                 if (ev.getAction() != KeyEvent.ACTION_DOWN) return false;
                 if (key == KeyEvent.KEYCODE_DPAD_UP) { focusTile(lastTile); return true; }
-                if (key == KeyEvent.KEYCODE_DPAD_DOWN) return true;
+                if (key == KeyEvent.KEYCODE_DPAD_DOWN) { openCc(); return true; }
                 if (key == KeyEvent.KEYCODE_DPAD_LEFT && idx == 0) return true;             // never wrap
                 if (key == KeyEvent.KEYCODE_DPAD_RIGHT && idx == n - 1) return true;
                 return false;
@@ -557,6 +854,7 @@ public class TheaterActivity extends Activity implements AppAdapter.TileListener
     /** Land on the remembered row and item. Nothing else may take focus before this runs. */
     private void restoreFocus() {
         root.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
+        if (ccOpen) { cc.refresh(); focusCc(lastCcCard); return; }   // back from a view the cards opened
         if (focusRow == ROW_MARKS) focusMark(lastMark);
         else if (focusRow == ROW_CARDS && !cards.isEmpty()) focusCard(lastCard);
         else focusTile(lastTile);
@@ -579,7 +877,8 @@ public class TheaterActivity extends Activity implements AppAdapter.TileListener
 
     // ---- helpers ---------------------------------------------------------------------------------
 
-    private void open(Intent i) {
+    @Override
+    public void open(Intent i) {
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try { startActivity(i); overridePendingTransition(0, 0); }
         catch (ActivityNotFoundException | SecurityException e) { Toast.makeText(this, R.string.not_available, Toast.LENGTH_SHORT).show(); }

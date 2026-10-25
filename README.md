@@ -30,6 +30,20 @@ and the item you're on turns solid white and lifts a little, in place of Classic
 With Mode set to **Auto** it is **Daylight Glass** from sunrise and **Night Glass** after sunset.
 Daylight needs a background with a day version: Dusk, Aurora Color, Color Waves or Sunset Drift.
 
+**The Clean home page.** Settings > Layout > Home page now has a third choice next to Calm and
+Theater: **Clean**, after the Lumen tvOS-style home. The photo with only a light shade at the top,
+the date and time on one line with the weather under it, two round frosted buttons top-right (Quick
+menu, Settings), and one frosted bar of your Home apps shown as their own full-colour banners; the
+one you're on grows and its name shows under the bar. Nothing else is on screen.
+
+**The command center on every home page.** On Calm, Theater and Clean, **DOWN** from the bottom
+row brings up the five cards (Mission Control, House, Cameras, Network, System); OK opens one and
+UP or BACK puts them away.
+
+**Reviewed agent states.** The hub can mark an agent **Ready** or **Waiting** from its latest tests
+(`agents.json` "review"), with a one-line reason on the card and the detail on the agent screen.
+It applies only while the live checks pass, so a machine that is down still shows red.
+
 **The Quick menu.** The sliders icon at Home's top right, or **MENU** on the remote, opens a
 control center: the clock on the left, and two-line pill buttons (name, and what it's set to
 now) for Edit layout, Look, Mode, Thermostat, Cameras and Sleep, then round buttons for Home,

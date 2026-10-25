@@ -97,19 +97,25 @@ final class CommandCenter {
         refresh();
     }
 
+    /** The team line without its leading "N up" (the card's big number already says it). */
+    private static String afterUp(String s) {
+        String r = s.replaceFirst("^\\d+ up( · )?", "");
+        return r.isEmpty() ? "all up" : r;
+    }
+
     /** Fill the cards from the latest readings (cheap; network data comes from Live's cache). */
     void refresh() {
         if (t == null) return;
         Live.Mission m = Live.mission();
         boolean mc = m.ok && !m.stale();
-        int up = m.count(Ui.Status.OK), part = m.count(Ui.Status.WARN), down = m.count(Ui.Status.BAD);
+        int up = m.countKind("up"), part = m.countKind("partial"), wait = m.countKind("waiting"), down = m.count(Ui.Status.BAD);
         String team = m.teamState();
         fill(cards[0], "Mission Control",
                 mc ? up + " up" : m.at > 0 ? "Stale" : "—",
-                mc ? (part + down > 0 ? part + " partial" + (down > 0 ? " · " + down + " down" : "") : m.summary(true))
+                mc ? afterUp(m.summary(false)) 
                    : m.at > 0 ? "last answer " + Live.ago(m.at) : "Hub's status feed isn't answering",
                 team,
-                !mc ? "Not connected" : down > 0 ? down + " down" : part > 0 ? "Not 100% · " + Live.ago(m.at) : "Connected · " + Live.ago(m.at),
+                !mc ? "Not connected" : down > 0 ? down + " down" : part > 0 ? "Not 100% · " + Live.ago(m.at) : wait > 0 ? "Waiting on you · " + Live.ago(m.at) : "Connected · " + Live.ago(m.at),
                 new String[][]{
                         {"Hub load", m.loadPct >= 0 ? m.loadPct + "%" : "—", ""},
                         {"Models", m.models >= 0 ? m.models + " on " + (m.host.isEmpty() ? "Hub" : m.host) : "—", ""}});

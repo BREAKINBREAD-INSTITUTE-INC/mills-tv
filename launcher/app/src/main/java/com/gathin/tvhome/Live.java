@@ -47,11 +47,25 @@ final class Live {
         String name, status, note, host;
         /** JJ's own name and note for the tile (Mission Control edit mode); the hub's defaults beside them. */
         String label = "", defaultLabel = "", defaultNote = "";
+        /** The latest tests' result from the hub ("Ready", "Waiting") and its detail line; empty when none. */
+        String reviewWord = "", detail = "";
         String shown() { return label.isEmpty() ? name : label; }
+        /** One of up / ready / waiting / partial / down / not built, for the team counts. */
+        String kind() {
+            String s = state();
+            if (!reviewWord.isEmpty() && (Ui.Status.OK.equals(s) || Ui.Status.WARN.equals(s))) return reviewWord.toLowerCase(java.util.Locale.US);
+            switch (s) {
+                case Ui.Status.OK: return "up";
+                case Ui.Status.WARN: return "partial";
+                case Ui.Status.BAD: return "down";
+                default: return "not built";
+            }
+        }
         Agent copy() {
             Agent c = new Agent();
             c.name = name; c.status = status; c.note = note; c.host = host; c.checked = checked; c.why = why;
             c.label = label; c.defaultLabel = defaultLabel; c.defaultNote = defaultNote;
+            c.reviewWord = reviewWord; c.detail = detail;
             return c;
         }
         /** Checked by the hub (ok/warn/bad/idle) and its plain words; empty from an older hub. */
@@ -70,6 +84,7 @@ final class Live {
         }
         /** One short word for state(), for a dot where the full reason won't fit. */
         String word() {
+            if (!reviewWord.isEmpty() && (Ui.Status.OK.equals(state()) || Ui.Status.WARN.equals(state()))) return reviewWord;
             switch (state()) {
                 case Ui.Status.OK:   return "Up";
                 case Ui.Status.WARN: return "Partial";
@@ -165,13 +180,17 @@ final class Live {
             if (count(Ui.Status.WARN) > 0) return Ui.Status.WARN;
             return count(Ui.Status.OK) > 0 ? Ui.Status.OK : Ui.Status.IDLE;
         }
-        /** "1 up · 3 partial · 6 not built" (zeros left out; withIdle false drops the grey ones). */
+        /** How many agents read this kind ("up", "ready", "waiting", "partial", "down", "not built"). */
+        int countKind(String kind) { int n = 0; for (Agent a : agents) if (kind.equals(a.kind())) n++; return n; }
+        /** The kinds in the order the TV lists them, each with its state colour. */
+        static final String[][] KINDS = {{Ui.Status.OK, "up"}, {Ui.Status.OK, "ready"}, {Ui.Status.WARN, "waiting"},
+                {Ui.Status.WARN, "partial"}, {Ui.Status.BAD, "down"}, {Ui.Status.IDLE, "not built"}};
+        /** "1 up · 2 ready · 1 waiting · 6 not built" (zeros left out; withIdle false drops the grey ones). */
         String summary(boolean withIdle) {
             StringBuilder sb = new StringBuilder();
-            String[][] parts = {{Ui.Status.OK, "up"}, {Ui.Status.WARN, "partial"}, {Ui.Status.BAD, "down"}, {Ui.Status.IDLE, "not built"}};
-            for (String[] p : parts) {
+            for (String[] p : KINDS) {
                 if (!withIdle && p[0].equals(Ui.Status.IDLE)) continue;
-                int n = count(p[0]);
+                int n = countKind(p[1]);
                 if (n == 0) continue;
                 if (sb.length() > 0) sb.append(" · ");
                 sb.append(n).append(' ').append(p[1]);
@@ -215,6 +234,8 @@ final class Live {
                         ag.checked = j.optString("state", "");
                         ag.why = j.optString("why", "");
                         ag.label = j.optString("label", "");
+                        ag.reviewWord = j.optString("word", "");
+                        ag.detail = j.optString("detail", "");
                         ag.defaultLabel = j.optString("default_label", ag.name);
                         ag.defaultNote = j.optString("default_note", ag.note);
                         m.agents.add(ag);

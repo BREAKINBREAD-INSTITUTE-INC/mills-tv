@@ -136,10 +136,10 @@ public class MissionControlActivity extends Screen {
         if (m.agents.isEmpty()) {
             summary.addView(dotWord(Ui.Status.IDLE, m.at > 0 ? "No agents reported" : "Not connected to Mission Control", 10));
         } else {
-            addCount(Ui.Status.OK, m.count(Ui.Status.OK) + " up", fresh);
-            addCount(Ui.Status.WARN, m.count(Ui.Status.WARN) + " partial", fresh);
-            if (m.count(Ui.Status.BAD) > 0) addCount(Ui.Status.BAD, m.count(Ui.Status.BAD) + " down", fresh);
-            addCount(Ui.Status.IDLE, m.count(Ui.Status.IDLE) + " not built", fresh);
+            for (String[] k : Live.Mission.KINDS) {   // 1 up · 2 ready · 1 waiting · 6 not built (zeros left out)
+                int c = m.countKind(k[1]);
+                if (c > 0) addCount(k[0], c + " " + k[1], fresh);
+            }
         }
         feed.setText(editing ? "Edit mode · " + (dirty ? "changes not saved yet" : "no changes yet")
                 : fresh ? "Mission Control · " + m.host + " · updated " + Live.ago(m.at)
